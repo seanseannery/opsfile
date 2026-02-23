@@ -2,60 +2,72 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-)
 
+	"sean_seannery/opsfile/internal"
+)
 
 const opsFileName string = "Opsfile"
 
 func main() {
-
-	args, err := processArgs()
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
-	path, err := getClosestOpsfilePath()
+	args, err := internal.ParseArgs(os.Args[1:])
 	if err != nil {
-		slog.Error("Error getting Opsfile path: " + err.Error())
-		return
+		slog.Error("parsing arguments: " + err.Error())
+		os.Exit(1)
 	}
-	print("Found it:" + path)
+
+	dir, err := getClosestOpsfilePath()
+	if err != nil {
+		slog.Error("finding Opsfile: " + err.Error())
+		os.Exit(1)
+	}
+
+	vars, commands, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
+	if err != nil {
+		slog.Error("parsing Opsfile: " + err.Error())
+		os.Exit(1)
+	}
+
+	resolved, err := internal.Resolve(args.OpsCommand, args.OpsEnv, commands, vars)
+	if err != nil {
+		slog.Error("resolving command: " + err.Error())
+		os.Exit(1)
+	}
+
+	for _, line := range resolved.Lines {
+		fmt.Println(line)
+	}
 }
 
-// get opsfile configuration file in the current directory or nearest parent directory
-// if it doesn't exist anywhere in the parent tree, return an error
+// getClosestOpsfilePath returns the directory containing the nearest Opsfile,
+// walking up the directory tree from the current working directory.
 func getClosestOpsfilePath() (string, error) {
-
-	workingDir, wdErr := os.Getwd()
-	if wdErr != nil {
-		slog.Error("Error getting working directory: " + wdErr.Error())
-		return "", wdErr
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
 	}
 	slog.Info("Working Directory: " + workingDir)
 
 	currPath := workingDir
-	file, err := os.Stat(currPath + string(filepath.Separator) + opsFileName)
+	file, err := os.Stat(filepath.Join(currPath, opsFileName))
 
-	// ignore folders named 'opsfile'
+	// ignore folders named 'Opsfile'
 	for (err != nil && os.IsNotExist(err)) || (err == nil && file.IsDir()) {
 		slog.Info("Opsfile not found in " + currPath)
 
-		//if the current directory and parent directory are the same, means we are at root and should stop
 		if currPath == filepath.Dir(currPath) {
-			slog.Error("Could not find Opsfile in any parent directory")
-			return "", errors.New("Could not find Opsfile in any parent directory")
+			return "", errors.New("could not find Opsfile in any parent directory")
 		}
 		currPath = filepath.Dir(currPath)
-		file, err = os.Stat(currPath + string(filepath.Separator) + opsFileName)
+		file, err = os.Stat(filepath.Join(currPath, opsFileName))
 	}
 	if err != nil {
-		slog.Error("Error opening " + currPath + ": " + err.Error())
-		return "", err
+		return "", fmt.Errorf("stat %s: %w", currPath, err)
 	}
 	return currPath, nil
-}
-
-func processArgs() cliArgs {
-	return nil
 }

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in `opsfile`! Contributions are welcome — whether it's a bug fix, a new feature, or just a typo correction.
+Thanks for your interest in `opsfile`! Contributions are welcome — whether it's a bug fix, a new feature, or just a typo correction. Feel free to submit pull requests with details on the fix or just submit a ticket detailing the feature request or bug fix.
 
 ---
 
