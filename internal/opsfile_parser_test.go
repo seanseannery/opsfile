@@ -37,8 +37,8 @@ func TestParseOpsFile_Variables(t *testing.T) {
 	}
 
 	cases := []struct{ name, want string }{
-		{"prod_AWS_ACCOUNT", "1234567"},
-		{"preprod_AWS_ACCOUNT", "8765431"},
+		{"prod_AWS_ACCOUNT", "123456789012"},
+		{"preprod_AWS_ACCOUNT", "987654321098"},
 	}
 	for _, tc := range cases {
 		got, ok := vars[tc.name]
@@ -115,11 +115,11 @@ func TestParseOpsFile_TailLogsEnvironments(t *testing.T) {
 		}
 	}
 
-	// default environment should have 1 shell line
+	// default environment: 4 backslash-continuation lines join into 1
 	defaultLines := cmd.Environments["default"]
 	if len(defaultLines) != 1 {
 		t.Errorf("tail-logs/default: expected 1 line, got %d: %v", len(defaultLines), defaultLines)
-	} else if want := "aws cloudwatch logs --tail $(AWS_ACCOUNT)"; defaultLines[0] != want {
+	} else if want := "aws logs tail $(LOG_GROUP) --follow --since 10m --region $(AWS_REGION)"; defaultLines[0] != want {
 		t.Errorf("tail-logs/default line 0: got %q, want %q", defaultLines[0], want)
 	}
 
@@ -127,7 +127,7 @@ func TestParseOpsFile_TailLogsEnvironments(t *testing.T) {
 	localLines := cmd.Environments["local"]
 	if len(localLines) != 1 {
 		t.Errorf("tail-logs/local: expected 1 line, got %d: %v", len(localLines), localLines)
-	} else if want := "docker logs image 123123123 --logs"; localLines[0] != want {
+	} else if want := "docker logs my-service --follow --tail 100"; localLines[0] != want {
 		t.Errorf("tail-logs/local line 0: got %q, want %q", localLines[0], want)
 	}
 }
@@ -149,14 +149,15 @@ func TestParseOpsFile_ListInstanceIpsEnvironments(t *testing.T) {
 		}
 	}
 
+	// Both environments use backslash continuation — each produces 1 joined shell line.
 	prodLines := cmd.Environments["prod"]
-	if len(prodLines) != 2 {
-		t.Errorf("list-instance-ips/prod: expected 2 lines, got %d: %v", len(prodLines), prodLines)
+	if len(prodLines) != 1 {
+		t.Errorf("list-instance-ips/prod: expected 1 line, got %d: %v", len(prodLines), prodLines)
 	}
 
 	preprodLines := cmd.Environments["preprod"]
-	if len(preprodLines) != 2 {
-		t.Errorf("list-instance-ips/preprod: expected 2 lines, got %d: %v", len(preprodLines), preprodLines)
+	if len(preprodLines) != 1 {
+		t.Errorf("list-instance-ips/preprod: expected 1 line, got %d: %v", len(preprodLines), preprodLines)
 	}
 }
 
@@ -313,5 +314,156 @@ my-cmd:
 	}
 	if !strings.Contains(err.Error(), "missing name") {
 		t.Errorf("error should mention 'missing name', got: %v", err)
+	}
+}
+
+func TestParseOpsFile_BackslashContinuation(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs \
+            --log-group /my/group
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	want := "aws cloudwatch logs --log-group /my/group"
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
+	}
+}
+
+func TestParseOpsFile_BackslashContinuationChain(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs \
+            --log-group /my/group \
+            --tail
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	want := "aws cloudwatch logs --log-group /my/group --tail"
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
+	}
+}
+
+func TestParseOpsFile_BackslashSpaceBeforeSlash(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws logs \
+            --tail
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	want := "aws logs --tail"
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
+	}
+}
+
+func TestParseOpsFile_IndentContinuation(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs
+            --log-group /my/group
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	want := "aws cloudwatch logs --log-group /my/group"
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
+	}
+}
+
+func TestParseOpsFile_IndentContinuationChain(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs
+            --log-group /my/group
+            --tail
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	want := "aws cloudwatch logs --log-group /my/group --tail"
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
+	}
+}
+
+func TestParseOpsFile_IndentNewCommandAfterContinuation(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs
+            --log-group /my/group
+        echo done
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 shell lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "aws cloudwatch logs --log-group /my/group" {
+		t.Errorf("line 0: got %q", lines[0])
+	}
+	if lines[1] != "echo done" {
+		t.Errorf("line 1: got %q", lines[1])
+	}
+}
+
+func TestParseOpsFile_BackslashTrailingEOF(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws cloudwatch logs \`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 shell line, got %d: %v", len(lines), lines)
+	}
+	// The trailing \ is stripped; what remains is the fragment before it.
+	want := "aws cloudwatch logs "
+	if lines[0] != want {
+		t.Errorf("got %q, want %q", lines[0], want)
 	}
 }

@@ -1,27 +1,44 @@
-# variables used in the ops command.  prepend with the environment string to scope variable to a specific environment
-prod_AWS_ACCOUNT=1234567
-preprod_AWS_ACCOUNT=8765431
+# Variables — prefix with environment name to scope to a specific environment
+prod_AWS_ACCOUNT=123456789012
+preprod_AWS_ACCOUNT=987654321098
+
+prod_AWS_REGION=us-east-1
+preprod_AWS_REGION=us-west-2
+
+prod_LOG_GROUP=/aws/ecs/my-service
+preprod_LOG_GROUP=/aws/ecs/my-service-preprod
+
+prod_CLUSTER=my-service-prod
+preprod_CLUSTER=my-service-preprod
 
 
-
-# the command to tail logs is the same for prod and preprod with the exception of different aws accounts
-# tailing logs in local dev environment is different since that just uses docker, so we override the default command by specifying local command.
+# Tail CloudWatch logs.
+# The default command works for both prod and preprod (variables handle the difference).
+# Local overrides to use docker instead.
 tail-logs:
     default:
-	aws cloudwatch logs --tail $(AWS_ACCOUNT)
+        aws logs tail $(LOG_GROUP) \
+            --follow \
+            --since 10m \
+            --region $(AWS_REGION)
 
     local:
-        docker logs image 123123123 --logs	
+        docker logs my-service --follow --tail 100
 
 
-# each environment is different so we dont use a default command to
+# List the private IPs of running instances.
+# prod queries EC2 instances; preprod queries ECS task network interfaces.
 list-instance-ips:
     prod:
-        aws ec2 --list-instances
-        echo "aws command complete"
+        aws ec2 describe-instances \
+            --filters "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].PrivateIpAddress" \
+            --output table \
+            --region $(AWS_REGION)
 
     preprod:
-        aws ecs cluster --list-instances
-        echo "ecs clust resources"`
-
-
+        aws ecs list-tasks \
+            --cluster $(CLUSTER) \
+            --region $(AWS_REGION) \
+            --query "taskArns" \
+            --output text

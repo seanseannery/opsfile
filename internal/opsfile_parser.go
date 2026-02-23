@@ -31,11 +31,13 @@ const (
 
 // parser holds the mutable state threaded through the line-by-line scan.
 type parser struct {
-	variables      OpsVariables
-	commands       map[string]OpsCommand
-	state          parseState
-	currentCommand string
-	currentEnv     string
+	variables       OpsVariables
+	commands        map[string]OpsCommand
+	state           parseState
+	currentCommand  string
+	currentEnv      string
+	continuationBuf string // accumulated fragments from backslash-continuation lines
+	lastShellIndent int    // leading-whitespace count of last new shell line; -1 = none yet
 }
 
 // ParseOpsFile reads and parses an Opsfile at the given path.
@@ -48,8 +50,9 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 	defer f.Close()
 
 	p := &parser{
-		variables: make(OpsVariables),
-		commands:  make(map[string]OpsCommand),
+		variables:       make(OpsVariables),
+		commands:        make(map[string]OpsCommand),
+		lastShellIndent: -1,
 	}
 
 	scanner := bufio.NewScanner(f)
@@ -62,6 +65,9 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 		return nil, nil, fmt.Errorf("reading Opsfile: %w", err)
 	}
 
+	// Flush any trailing backslash-continuation fragment at end of file.
+	p.flushContinuation()
+
 	if err := p.validate(); err != nil {
 		return nil, nil, err
 	}
@@ -72,6 +78,7 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 // processLine categorises a raw line and dispatches to the appropriate handler.
 func (p *parser) processLine(raw string) error {
 	isIndented := len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t')
+	indent := leadingWhitespace(raw)
 	line := strings.TrimSpace(raw)
 
 	if line == "" || strings.HasPrefix(line, "#") {
@@ -79,6 +86,7 @@ func (p *parser) processLine(raw string) error {
 	}
 	// A non-indented line always resets context back to the top level.
 	if !isIndented {
+		p.flushContinuation()
 		p.state = topLevel
 	}
 
@@ -88,7 +96,7 @@ func (p *parser) processLine(raw string) error {
 	case inCommand:
 		return p.handleInCommand(line)
 	case inEnvironment:
-		p.handleInEnvironment(line)
+		p.handleInEnvironment(line, indent)
 	}
 	return nil
 }
@@ -110,11 +118,30 @@ func (p *parser) handleInCommand(line string) error {
 	return nil
 }
 
-func (p *parser) handleInEnvironment(line string) {
-	if isEnvHeader(line) {
+func (p *parser) handleInEnvironment(line string, rawIndent int) {
+	switch {
+	case isEnvHeader(line):
+		p.flushContinuation()
 		p.startEnv(strings.TrimSuffix(line, ":"))
-	} else {
+
+	case strings.HasSuffix(line, `\`):
+		// Backslash continuation: strip \ and accumulate the fragment.
+		p.continuationBuf += strings.TrimSuffix(line, `\`)
+
+	case p.continuationBuf != "":
+		// Final line of a backslash-continuation chain.
+		p.appendShellLine(p.continuationBuf + line)
+		p.continuationBuf = ""
+		p.lastShellIndent = rawIndent
+
+	case p.lastShellIndent >= 0 && rawIndent > p.lastShellIndent:
+		// Indent-based continuation: join to the previous shell line with a space.
+		p.joinLastShellLine(" " + line)
+
+	default:
+		// Regular new shell line.
 		p.appendShellLine(line)
+		p.lastShellIndent = rawIndent
 	}
 }
 
@@ -190,6 +217,7 @@ func (p *parser) startEnv(name string) {
 		cmd.Environments[name] = []string{}
 	}
 	p.commands[p.currentCommand] = cmd
+	p.lastShellIndent = -1
 	p.state = inEnvironment
 }
 
@@ -199,12 +227,42 @@ func (p *parser) appendShellLine(line string) {
 	p.commands[p.currentCommand] = cmd
 }
 
+// flushContinuation appends any buffered backslash-continuation fragments as a
+// complete shell line and clears the buffer. No-op if the buffer is empty.
+func (p *parser) flushContinuation() {
+	if p.continuationBuf != "" {
+		p.appendShellLine(p.continuationBuf)
+		p.continuationBuf = ""
+	}
+}
+
+// joinLastShellLine appends suffix to the last shell line in the current environment.
+func (p *parser) joinLastShellLine(suffix string) {
+	cmd := p.commands[p.currentCommand]
+	lines := cmd.Environments[p.currentEnv]
+	if len(lines) > 0 {
+		lines[len(lines)-1] += suffix
+		cmd.Environments[p.currentEnv] = lines
+		p.commands[p.currentCommand] = cmd
+	}
+}
+
 // validate checks post-parse invariants.
 func (p *parser) validate() error {
 	if len(p.commands) == 0 && len(p.variables) == 0 {
 		return errors.New("Opsfile is empty")
 	}
 	return nil
+}
+
+// leadingWhitespace returns the number of leading space/tab characters in s.
+func leadingWhitespace(s string) int {
+	for i, c := range s {
+		if c != ' ' && c != '\t' {
+			return i
+		}
+	}
+	return len(s)
 }
 
 // isEnvHeader reports whether line is an environment header (e.g. "prod:").
