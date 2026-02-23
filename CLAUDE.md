@@ -30,3 +30,13 @@ The `docs/` and `examples/` directories exist but are currently empty.
 ## Module
 
 Module path: `sean_seannery/opsfile` (Go 1.25+). No external dependencies yet.
+
+## Contributing guidelines
+
+Follow `CONTRIBUTING.md` for full details. Key points for Claude:
+
+**Commits** — use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Subject line under 72 characters, imperative mood.
+
+**Code style** — standard Go conventions: `MixedCaps` exports, short receiver names, errors wrapped with `fmt.Errorf("doing X: %w", err)`, table-driven tests. Run `gofmt` before committing.
+
+**Dependencies** — prefer the standard library; add external packages only when necessary, always follow with `go mod tidy`.
