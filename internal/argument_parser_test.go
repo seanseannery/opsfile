@@ -5,14 +5,65 @@ import (
 	"testing"
 )
 
-func TestParseArgs(t *testing.T) {
+func TestParseOpsFlags(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       []string
+		wantPos     []string
+		wantErrSub  string
+	}{
+		{
+			name:    "no flags, positionals passed through",
+			input:   []string{"prod", "tail-logs"},
+			wantPos: []string{"prod", "tail-logs"},
+		},
+		{
+			name:    "empty input",
+			input:   []string{},
+			wantPos: []string{},
+		},
+		{
+			name:       "unknown flag",
+			input:      []string{"-unknown-flag"},
+			wantErrSub: "flag provided but not defined",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseOpsFlags(tc.input)
+			if tc.wantErrSub != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrSub) {
+					t.Errorf("error %q does not contain %q", err.Error(), tc.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.wantPos) {
+				t.Fatalf("positionals: got %v, want %v", got, tc.wantPos)
+			}
+			for i, w := range tc.wantPos {
+				if got[i] != w {
+					t.Errorf("positionals[%d]: got %q, want %q", i, got[i], w)
+				}
+			}
+		})
+	}
+}
+
+func TestParseOpsArgs(t *testing.T) {
 	cases := []struct {
 		name       string
 		input      []string
 		wantEnv    string
 		wantCmd    string
 		wantArgs   []string
-		wantErrSub string // substring expected in error, empty = no error expected
+		wantErrSub string
 	}{
 		{
 			name:    "env and command",
@@ -35,16 +86,11 @@ func TestParseArgs(t *testing.T) {
 			input:      []string{"prod"},
 			wantErrSub: "missing command",
 		},
-		{
-			name:       "unknown flag",
-			input:      []string{"-unknown-flag"},
-			wantErrSub: "flag provided but not defined",
-		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseArgs(tc.input)
+			got, err := ParseOpsArgs(tc.input)
 			if tc.wantErrSub != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)

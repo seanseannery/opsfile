@@ -15,9 +15,9 @@ const opsFileName string = "Opsfile"
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
-	args, err := internal.ParseArgs(os.Args[1:])
+	positionals, err := internal.ParseOpsFlags(os.Args[1:])
 	if err != nil {
-		slog.Error("parsing arguments: " + err.Error())
+		slog.Error("parsing flags: " + err.Error())
 		os.Exit(1)
 	}
 
@@ -30,6 +30,12 @@ func main() {
 	vars, commands, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
 	if err != nil {
 		slog.Error("parsing Opsfile: " + err.Error())
+		os.Exit(1)
+	}
+
+	args, err := internal.ParseOpsArgs(positionals)
+	if err != nil {
+		slog.Error("parsing arguments: " + err.Error())
 		os.Exit(1)
 	}
 
