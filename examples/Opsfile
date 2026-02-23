@@ -1,0 +1,27 @@
+# variables used in the ops command.  prepend with the environment string to scope variable to a specific environment
+prod_AWS_ACCOUNT=1234567
+preprod_AWS_ACCOUNT=8765431
+
+
+
+# the command to tail logs is the same for prod and preprod with the exception of different aws accounts
+# tailing logs in local dev environment is different since that just uses docker, so we override the default command by specifying local command.
+tail-logs:
+    default:
+	aws cloudwatch logs --tail $(AWS_ACCOUNT)
+
+    local:
+        docker logs image 123123123 --logs	
+
+
+# each environment is different so we dont use a default command to
+list-instance-ips:
+    prod:
+        aws ec2 --list-instances
+        echo "aws command complete"
+
+    preprod:
+        aws ecs cluster --list-instances
+        echo "ecs clust resources"`
+
+
