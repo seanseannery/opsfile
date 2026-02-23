@@ -12,6 +12,45 @@ ex
  * `ops local logs` - tail logs for your local running docker environment to debug
  * `ops prod k8s -namespace` - runs kubectl top on the provided namespace
 
+## Usage
+
+```
+ops [flags] <environment> <command> [command-args]
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-d` | Print the resolved commands without executing them |
+| `--silent` | `-s` | Execute commands without printing any output |
+| `--version` | `-v` | Print the ops version and build platform, then exit |
+| `--help` / `-?` | `-h` | Show this usage information, then exit |
+
+### Opsfile format
+
+Create an `Opsfile` in your repo root (or any parent directory):
+
+```
+# Variables — prefix with environment name to scope them
+prod_AWS_ACCOUNT=1234567
+preprod_AWS_ACCOUNT=8765431
+
+# Commands — define per-environment shell lines
+# Use "default" as a fallback when env-specific block is absent
+tail-logs:
+    default:
+        aws cloudwatch logs --tail $(AWS_ACCOUNT)
+    local:
+        docker logs myapp --follow
+
+list-instance-ips:
+    prod:
+        aws ec2 --list-instances
+    preprod:
+        aws ecs cluster --list-instances
+```
+
+Variable references use `$(VAR_NAME)`. Scoped variables (`prod_AWS_ACCOUNT`) take priority over unscoped ones (`AWS_ACCOUNT`).
+
 ## Why?
 
 I really like Makefiles in my project repos.  It's a great way to build, test, spin-up local dev environments, and common CI actions without having to memorize the associated maven/docker/gradle/k8s specifics. Additionally, it makes it easy to onboard new engineers to the repo and share common CI scripts with teammates.

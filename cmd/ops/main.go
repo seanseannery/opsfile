@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"sean_seannery/opsfile/internal"
 )
@@ -15,10 +16,18 @@ const opsFileName string = "Opsfile"
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
-	positionals, err := internal.ParseOpsFlags(os.Args[1:])
+	flags, positionals, err := internal.ParseOpsFlags(os.Args[1:])
+	if errors.Is(err, internal.ErrHelp) {
+		os.Exit(0)
+	}
 	if err != nil {
 		slog.Error("parsing flags: " + err.Error())
 		os.Exit(1)
+	}
+
+	if flags.Version {
+		fmt.Printf("ops version %s (%s/%s)\n", internal.Version, runtime.GOOS, runtime.GOARCH)
+		os.Exit(0)
 	}
 
 	dir, err := getClosestOpsfilePath()
@@ -45,8 +54,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, line := range resolved.Lines {
-		fmt.Println(line)
+	if !flags.Silent {
+		for _, line := range resolved.Lines {
+			fmt.Println(line)
+		}
 	}
 }
 
