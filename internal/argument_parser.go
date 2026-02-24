@@ -14,9 +14,10 @@ var ErrHelp = errors.New("help requested")
 
 // OpsFlags holds the values of ops-level flags parsed from the command line.
 type OpsFlags struct {
-	DryRun  bool // -d / --dry-run
-	Silent  bool // -s / --silent
-	Version bool // -v / --version
+	Directory string // -D / --directory
+	DryRun    bool   // -d / --dry-run
+	Silent    bool   // -s / --silent
+	Version   bool   // -v / --version
 }
 
 // Args holds the parsed positional components of an ops CLI invocation.
@@ -46,6 +47,7 @@ func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
 		fmt.Fprintln(fs.Output(), "Usage: ops [flags] <environment> <command> [command-args]")
 		fmt.Fprintln(fs.Output())
 		fmt.Fprintln(fs.Output(), "Flags:")
+		fmt.Fprintln(fs.Output(), "  -D, --directory  use Opsfile in the given directory")
 		fmt.Fprintln(fs.Output(), "  -d, --dry-run    print commands without executing")
 		fmt.Fprintln(fs.Output(), "  -h, --help, -?   show this help message")
 		fmt.Fprintln(fs.Output(), "  -s, --silent     execute without printing output")
@@ -53,6 +55,8 @@ func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
 	}
 
 	var f OpsFlags
+	fs.StringVar(&f.Directory, "D", "", "")
+	fs.StringVar(&f.Directory, "directory", "", "")
 	fs.BoolVar(&f.DryRun, "d", false, "")
 	fs.BoolVar(&f.DryRun, "dry-run", false, "")
 	fs.BoolVar(&f.Silent, "s", false, "")

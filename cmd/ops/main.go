@@ -30,10 +30,15 @@ func main() {
 		os.Exit(0)
 	}
 
-	dir, err := getClosestOpsfilePath()
-	if err != nil {
-		slog.Error("finding Opsfile: " + err.Error())
-		os.Exit(1)
+	var dir string
+	if flags.Directory != "" {
+		dir = flags.Directory
+	} else {
+		dir, err = getClosestOpsfilePath()
+		if err != nil {
+			slog.Error("finding Opsfile: " + err.Error())
+			os.Exit(1)
+		}
 	}
 
 	vars, commands, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))

@@ -27,6 +27,18 @@ func TestParseOpsFlags(t *testing.T) {
 			wantPos:   []string{},
 		},
 		{
+			name:      "-D sets Directory",
+			input:     []string{"-D", "/some/path", "prod", "cmd"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:      "--directory sets Directory",
+			input:     []string{"--directory", "/some/path", "prod", "cmd"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
 			name:      "-d sets DryRun",
 			input:     []string{"-d", "prod", "cmd"},
 			wantFlags: OpsFlags{DryRun: true},
