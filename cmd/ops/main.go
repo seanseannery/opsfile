@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -59,10 +60,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !flags.Silent {
-		for _, line := range resolved.Lines {
-			fmt.Println(line)
+	if flags.DryRun {
+		if !flags.Silent {
+			for _, line := range resolved.Lines {
+				fmt.Println(line)
+			}
 		}
+		return
+	}
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+
+	if err := internal.Execute(resolved.Lines, shell); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
+		slog.Error("executing command: " + err.Error())
+		os.Exit(1)
 	}
 }
 
