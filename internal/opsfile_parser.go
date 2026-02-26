@@ -32,7 +32,7 @@ const (
 // parser holds the mutable state threaded through the line-by-line scan.
 type parser struct {
 	variables       OpsVariables
-	commands        map[string]OpsCommand
+	commands        map[string]*OpsCommand
 	state           parseState
 	currentCommand  string
 	currentEnv      string
@@ -51,7 +51,7 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 
 	p := &parser{
 		variables:       make(OpsVariables),
-		commands:        make(map[string]OpsCommand),
+		commands:        make(map[string]*OpsCommand),
 		lastShellIndent: -1,
 	}
 
@@ -72,13 +72,16 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 		return nil, nil, err
 	}
 
-	return p.variables, p.commands, nil
+	commands := make(map[string]OpsCommand, len(p.commands))
+	for k, v := range p.commands {
+		commands[k] = *v
+	}
+	return p.variables, commands, nil
 }
 
 // processLine categorises a raw line and dispatches to the appropriate handler.
 func (p *parser) processLine(raw string) error {
 	isIndented := len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t')
-	indent := leadingWhitespace(raw)
 	line := strings.TrimSpace(raw)
 
 	if line == "" || strings.HasPrefix(line, "#") {
@@ -96,7 +99,7 @@ func (p *parser) processLine(raw string) error {
 	case inCommand:
 		return p.handleInCommand(line)
 	case inEnvironment:
-		p.handleInEnvironment(line, indent)
+		p.handleInEnvironment(line, leadingWhitespace(raw))
 	}
 	return nil
 }
@@ -205,7 +208,7 @@ func (p *parser) startCommand(name string) error {
 		return fmt.Errorf("duplicate command %q", name)
 	}
 	p.currentCommand = name
-	p.commands[name] = OpsCommand{Name: name, Environments: make(map[string][]string)}
+	p.commands[name] = &OpsCommand{Name: name, Environments: make(map[string][]string)}
 	p.state = inCommand
 	return nil
 }
@@ -216,7 +219,6 @@ func (p *parser) startEnv(name string) {
 	if _, exists := cmd.Environments[name]; !exists {
 		cmd.Environments[name] = []string{}
 	}
-	p.commands[p.currentCommand] = cmd
 	p.lastShellIndent = -1
 	p.state = inEnvironment
 }
@@ -224,7 +226,6 @@ func (p *parser) startEnv(name string) {
 func (p *parser) appendShellLine(line string) {
 	cmd := p.commands[p.currentCommand]
 	cmd.Environments[p.currentEnv] = append(cmd.Environments[p.currentEnv], line)
-	p.commands[p.currentCommand] = cmd
 }
 
 // flushContinuation appends any buffered backslash-continuation fragments as a
@@ -238,12 +239,9 @@ func (p *parser) flushContinuation() {
 
 // joinLastShellLine appends suffix to the last shell line in the current environment.
 func (p *parser) joinLastShellLine(suffix string) {
-	cmd := p.commands[p.currentCommand]
-	lines := cmd.Environments[p.currentEnv]
+	lines := p.commands[p.currentCommand].Environments[p.currentEnv]
 	if len(lines) > 0 {
 		lines[len(lines)-1] += suffix
-		cmd.Environments[p.currentEnv] = lines
-		p.commands[p.currentCommand] = cmd
 	}
 }
 
@@ -257,12 +255,7 @@ func (p *parser) validate() error {
 
 // leadingWhitespace returns the number of leading space/tab characters in s.
 func leadingWhitespace(s string) int {
-	for i, c := range s {
-		if c != ' ' && c != '\t' {
-			return i
-		}
-	}
-	return len(s)
+	return len(s) - len(strings.TrimLeft(s, " \t"))
 }
 
 // isEnvHeader reports whether line is an environment header (e.g. "prod:").

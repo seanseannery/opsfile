@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 )
 
 // the structure of the ops commandline argument should be
@@ -32,59 +33,43 @@ type Args struct {
 // Returns ErrHelp if -h, --help, or -? is passed (usage is printed to stderr).
 // Returns an error for unrecognised flags.
 func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
-	// Pre-process: -? is not a valid flag name; map it to -h.
-	processed := make([]string, len(osArgs))
-	for i, a := range osArgs {
-		if a == "-?" {
-			processed[i] = "-h"
-		} else {
-			processed[i] = a
-		}
-	}
-
 	fs := flag.NewFlagSet("ops", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: ops [flags] <environment> <command> [command-args]")
-		fmt.Fprintln(fs.Output())
-		fmt.Fprintln(fs.Output(), "Flags:")
-		fmt.Fprintln(fs.Output(), "  -D, --directory  use Opsfile in the given directory")
-		fmt.Fprintln(fs.Output(), "  -d, --dry-run    print commands without executing")
-		fmt.Fprintln(fs.Output(), "  -h, --help, -?   show this help message")
-		fmt.Fprintln(fs.Output(), "  -s, --silent     execute without printing output")
-		fmt.Fprintln(fs.Output(), "  -v, --version    print the ops version and exit")
+		fmt.Fprint(fs.Output(), "The 'ops' command runs commonly-used live-operation commands that you define for a specific development or production environment. It locates the 'Opsfile' in this directory (or the nearest parent directory) and runs the commands that you define in that file.\n\nUsage: ops [flags] <environment> <command> [command-args]\n       ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'\n\nFlags:\n  -D, --directory  use Opsfile in the given directory\n  -d, --dry-run    print commands without executing\n  -h, --help, -?   show this help message\n  -s, --silent     execute without printing output\n  -v, --version    print the ops version and exit\n")
 	}
 
-	var f OpsFlags
-	fs.StringVar(&f.Directory, "D", "", "")
-	fs.StringVar(&f.Directory, "directory", "", "")
-	fs.BoolVar(&f.DryRun, "d", false, "")
-	fs.BoolVar(&f.DryRun, "dry-run", false, "")
-	fs.BoolVar(&f.Silent, "s", false, "")
-	fs.BoolVar(&f.Silent, "silent", false, "")
-	fs.BoolVar(&f.Version, "v", false, "")
-	fs.BoolVar(&f.Version, "version", false, "")
+	// -? is not a valid flag name; handle it before fs.Parse.
+	if slices.Contains(osArgs, "-?") {
+		fs.Usage()
+		return OpsFlags{}, nil, ErrHelp
+	}
 
-	if err := fs.Parse(processed); err != nil {
+	dir := fs.String("D", "", ""); fs.StringVar(dir, "directory", "", "")
+	dryRun := fs.Bool("d", false, ""); fs.BoolVar(dryRun, "dry-run", false, "")
+	silent := fs.Bool("s", false, ""); fs.BoolVar(silent, "silent", false, "")
+	ver := fs.Bool("v", false, ""); fs.BoolVar(ver, "version", false, "")
+
+	if err := fs.Parse(osArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return OpsFlags{}, nil, ErrHelp
 		}
 		return OpsFlags{}, nil, err
 	}
-	return f, fs.Args(), nil
+	return OpsFlags{Directory: *dir, DryRun: *dryRun, Silent: *silent, Version: *ver}, fs.Args(), nil
 }
 
-// ParseOpsArgs parses the positional arguments returned by ParseOpsFlags into
+// ParseOpsArgs parses the positional non-flag arguments returned by ParseOpsFlags into
 // an Args struct. Returns an error if the environment or command are missing.
-func ParseOpsArgs(positionals []string) (Args, error) {
-	if len(positionals) < 1 {
+func ParseOpsArgs(nonFlagArgs []string) (Args, error) {
+	if len(nonFlagArgs) < 1 {
 		return Args{}, errors.New("missing environment argument")
 	}
-	if len(positionals) < 2 {
+	if len(nonFlagArgs) < 2 {
 		return Args{}, errors.New("missing command argument")
 	}
 	return Args{
-		OpsEnv:      positionals[0],
-		OpsCommand:  positionals[1],
-		CommandArgs: positionals[2:],
+		OpsEnv:      nonFlagArgs[0],
+		OpsCommand:  nonFlagArgs[1],
+		CommandArgs: nonFlagArgs[2:],
 	}, nil
 }
