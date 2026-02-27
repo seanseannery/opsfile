@@ -12,6 +12,18 @@ ex
  * `ops local logs` - tail logs for your local running docker environment to debug
  * `ops prod k8s -namespace` - runs kubectl top on the provided namespace
 
+## Installation
+
+**macOS / Linux** — paste this in your terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash
+```
+
+The script detects your OS, downloads the correct binary from the [latest GitHub release](https://github.com/seanseannery/opsfile/releases/latest), and installs it to `/usr/local/bin/ops` (prompting for `sudo` if needed).
+
+**Windows** — download `ops.exe` directly from the [releases page](https://github.com/seanseannery/opsfile/releases/latest).
+
 ## Usage
 
 ```
