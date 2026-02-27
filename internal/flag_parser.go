@@ -34,8 +34,26 @@ type Args struct {
 // Returns an error for unrecognised flags.
 func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
 	fs := flag.NewFlagSet("ops", flag.ContinueOnError)
+
+	dir := fs.String("D", "", "use Opsfile in the given `directory`")
+	fs.StringVar(dir, "directory", "", "use Opsfile in the given `directory`")
+	dryRun := fs.Bool("d", false, "print commands without executing")
+	fs.BoolVar(dryRun, "dry-run", false, "print commands without executing")
+	silent := fs.Bool("s", false, "execute without printing output")
+	fs.BoolVar(silent, "silent", false, "execute without printing output")
+	ver := fs.Bool("v", false, "print the ops version and exit")
+	fs.BoolVar(ver, "version", false, "print the ops version and exit")
+
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "The 'ops' command runs commonly-used live-operation commands that you define for a specific development or production environment. It locates the 'Opsfile' in this directory (or the nearest parent directory) and runs the commands that you define in that file.\n\nUsage: ops [flags] <environment> <command> [command-args]\n       ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'\n\nFlags:\n  -D, --directory  use Opsfile in the given directory\n  -d, --dry-run    print commands without executing\n  -h, --help, -?   show this help message\n  -s, --silent     execute without printing output\n  -v, --version    print the ops version and exit\n")
+		fmt.Fprint(fs.Output(), `The 'ops' command runs commonly-used live-operation commands that you define for a specific development or production environment.
+It locates the 'Opsfile' in this directory (or the nearest parent directory) and runs the commands that you define in that file.
+
+Usage: ops [flags] <environment> <command> [command-args]
+      ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'
+
+Flags:`)
+
+		fs.PrintDefaults()
 	}
 
 	// -? is not a valid flag name; handle it before fs.Parse.
@@ -43,11 +61,6 @@ func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
 		fs.Usage()
 		return OpsFlags{}, nil, ErrHelp
 	}
-
-	dir := fs.String("D", "", ""); fs.StringVar(dir, "directory", "", "")
-	dryRun := fs.Bool("d", false, ""); fs.BoolVar(dryRun, "dry-run", false, "")
-	silent := fs.Bool("s", false, ""); fs.BoolVar(silent, "silent", false, "")
-	ver := fs.Bool("v", false, ""); fs.BoolVar(ver, "version", false, "")
 
 	if err := fs.Parse(osArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
