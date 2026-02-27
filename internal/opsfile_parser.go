@@ -38,6 +38,7 @@ type parser struct {
 	currentEnv      string
 	continuationBuf string // accumulated fragments from backslash-continuation lines
 	lastShellIndent int    // leading-whitespace count of last new shell line; -1 = none yet
+	lineNum         int    // current 1-based line number, for error messages
 }
 
 // ParseOpsFile reads and parses an Opsfile at the given path.
@@ -58,7 +59,7 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		if err := p.processLine(scanner.Text()); err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("line %d: %w", p.lineNum, err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -81,6 +82,7 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 
 // processLine categorises a raw line and dispatches to the appropriate handler.
 func (p *parser) processLine(raw string) error {
+	p.lineNum++
 	isIndented := len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t')
 	line := strings.TrimSpace(raw)
 
