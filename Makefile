@@ -1,15 +1,18 @@
-.PHONY: build release run clean
+.PHONY: build release run clean lint help
+
+## help: show this help message
+help:
+	@sed -n 's/^## //p' $(MAKEFILE_LIST) | awk -F: '{desc=$$2; for(i=3;i<=NF;i++) desc=desc":"$$i; printf "  %-10s %s\n", $$1, desc}'
 
 # Go parameters
 BINARY_NAME=ops
 BUMP ?= patch
 
-# Build the binary
+## build: build binary to bin/ops
 build:
 	go build -o bin/$(BINARY_NAME) ./cmd/ops
 
-# Bump version and build release binaries for all platforms.
-# Usage: make release [BUMP=major|minor|patch]  (default: patch)
+## release: bump version and build release binaries (BUMP=major|minor|patch, default: patch)
 release:
 	@set -e; \
 	current=$$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go); \
@@ -29,12 +32,12 @@ release:
 	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -a -ldflags="-w -s" -o $(BINARY_NAME)_darwin  ./cmd/ops
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -ldflags="-w -s" -o $(BINARY_NAME).exe     ./cmd/ops
 
-# Run the application
+## run: build and run the binary
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/ops
 	./bin/$(BINARY_NAME)
 
-# Clean build artifacts
+## clean: remove build artifacts
 clean:
 	go clean
 	rm -f $(BINARY_NAME)
@@ -42,11 +45,21 @@ clean:
 	rm -f $(BINARY_NAME)_darwin
 	rm -f $(BINARY_NAME).exe
 
-# Download dependencies
+## deps: download and tidy Go module dependencies
 deps:
 	go mod download
 	go mod tidy
 
-# Run tests
+## test: run all tests
 test:
 	go test -v ./...
+
+## lint: check formatting (gofmt) and run static analysis (go vet)
+lint:
+	@unformatted=$$(gofmt -l .); \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt: the following files need formatting:"; \
+		echo "$$unformatted"; \
+		exit 1; \
+	fi
+	go vet ./...

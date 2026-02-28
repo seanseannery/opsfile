@@ -8,9 +8,9 @@ import (
 
 func TestExecute(t *testing.T) {
 	cases := []struct {
-		name        string
-		lines       []string
-		wantErr     bool
+		name         string
+		lines        []string
+		wantErr      bool
 		wantExitCode int
 	}{
 		{

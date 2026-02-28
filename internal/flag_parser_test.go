@@ -148,9 +148,9 @@ func TestParseOpsArgs(t *testing.T) {
 			wantEnv: "prod", wantCmd: "tail-logs",
 		},
 		{
-			name:     "env, command, and passthrough args",
-			input:    []string{"prod", "tail-logs", "--since", "1h"},
-			wantEnv:  "prod", wantCmd: "tail-logs",
+			name:    "env, command, and passthrough args",
+			input:   []string{"prod", "tail-logs", "--since", "1h"},
+			wantEnv: "prod", wantCmd: "tail-logs",
 			wantArgs: []string{"--since", "1h"},
 		},
 		{
