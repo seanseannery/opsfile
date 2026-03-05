@@ -80,7 +80,7 @@ func TestParseOpsFile_Commands(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expectedCommands := []string{"tail-logs", "list-instance-ips"}
+	expectedCommands := []string{"tail-logs", "list-instance-ips", "show-profile"}
 	for _, name := range expectedCommands {
 		cmd, ok := commands[name]
 		if !ok {
