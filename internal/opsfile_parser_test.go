@@ -448,6 +448,171 @@ my-cmd:
 	}
 }
 
+func TestParseOpsFile_VariableWhitespaceOnlyValue(t *testing.T) {
+	content := "VAR=   \n\nmy-cmd:\n    prod:\n        echo hello\n"
+	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// TrimSpace on the value after "=" yields empty string.
+	if got := vars["VAR"]; got != "" {
+		t.Errorf("VAR: got %q, want %q", got, "")
+	}
+}
+
+func TestParseOpsFile_VariableEmptyUnquotedValue(t *testing.T) {
+	content := `
+VAR=
+
+my-cmd:
+    prod:
+        echo hello
+`
+	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := vars["VAR"]; got != "" {
+		t.Errorf("VAR: got %q, want %q", got, "")
+	}
+}
+
+func TestParseOpsFile_MultipleEnvironments(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        echo prod
+    preprod:
+        echo preprod
+    local:
+        echo local
+    default:
+        echo default
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cmd := commands["my-cmd"]
+	for _, env := range []string{"prod", "preprod", "local", "default"} {
+		lines, ok := cmd.Environments[env]
+		if !ok {
+			t.Errorf("environment %q not found", env)
+			continue
+		}
+		want := "echo " + env
+		if len(lines) != 1 || lines[0] != want {
+			t.Errorf("env %q: got %v, want [%q]", env, lines, want)
+		}
+	}
+}
+
+func TestParseOpsFile_MixedBackslashAndIndentContinuation(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        aws logs tail \
+            --follow
+            --since 10m
+`
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	// Backslash joins first two into one line; the third line at same indent
+	// is NOT deeper than the flushed continuation, so it's a separate shell line.
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 shell lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "aws logs tail --follow" {
+		t.Errorf("line 0: got %q, want %q", lines[0], "aws logs tail --follow")
+	}
+	if lines[1] != "--since 10m" {
+		t.Errorf("line 1: got %q, want %q", lines[1], "--since 10m")
+	}
+}
+
+func TestParseOpsFile_TabIndentedShellLines(t *testing.T) {
+	content := "my-cmd:\n\tprod:\n\t\techo hello\n\t\techo world\n"
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := commands["my-cmd"].Environments["prod"]
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 shell lines, got %d: %v", len(lines), lines)
+	}
+	if lines[0] != "echo hello" {
+		t.Errorf("line 0: got %q, want %q", lines[0], "echo hello")
+	}
+	if lines[1] != "echo world" {
+		t.Errorf("line 1: got %q, want %q", lines[1], "echo world")
+	}
+}
+
+func TestParseOpsFile_CommandHeaderTrailingWhitespace(t *testing.T) {
+	// Trailing spaces after ":" should still parse as a command header.
+	// Note: TrimSpace strips trailing whitespace, so "my-cmd:  " -> "my-cmd:"
+	content := "my-cmd:  \n    prod:\n        echo hello\n"
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := commands["my-cmd"]; !ok {
+		t.Error("command 'my-cmd' not found")
+	}
+}
+
+func TestParseOpsFile_EnvHeaderTrailingWhitespace(t *testing.T) {
+	// Trailing whitespace on env header line.
+	content := "my-cmd:\n    prod:  \n        echo hello\n"
+	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := commands["my-cmd"].Environments["prod"]; !ok {
+		t.Error("environment 'prod' not found")
+	}
+}
+
+func TestParseOpsFile_VariableValueLeadingWhitespace(t *testing.T) {
+	content := `
+VAR=  value
+
+my-cmd:
+    prod:
+        echo hello
+`
+	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// parseVariable does TrimSpace on the value after "=", so "  value" -> "value"
+	if got := vars["VAR"]; got != "value" {
+		t.Errorf("VAR: got %q, want %q", got, "value")
+	}
+}
+
+func TestParseOpsFile_LineNumberInParseError(t *testing.T) {
+	content := `
+GOOD=fine
+BAD="unclosed
+
+my-cmd:
+    prod:
+        echo hello
+`
+	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	if err == nil {
+		t.Fatal("expected error for unclosed quote, got nil")
+	}
+	// The unclosed quote is on line 3 (blank line 1, GOOD=fine line 2, BAD=... line 3).
+	if !strings.Contains(err.Error(), "line 3") {
+		t.Errorf("error should include line number, got: %v", err)
+	}
+}
+
 func TestParseOpsFile_BackslashTrailingEOF(t *testing.T) {
 	content := `
 my-cmd:

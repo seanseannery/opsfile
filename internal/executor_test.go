@@ -3,6 +3,7 @@ package internal
 import (
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,37 @@ func TestExecute(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestExecute_ErrorWrapsCommandString(t *testing.T) {
+	err := Execute([]string{"this-command-does-not-exist-at-all"}, "/bin/sh")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "this-command-does-not-exist-at-all") {
+		t.Errorf("error %q does not contain the command string", err.Error())
+	}
+}
+
+func TestExecute_InvalidShellPath(t *testing.T) {
+	err := Execute([]string{"echo hello"}, "/nonexistent/shell/binary")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestExecute_CommandWithPipe(t *testing.T) {
+	err := Execute([]string{"echo hello | cat"}, "/bin/sh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecute_StderrConnected(t *testing.T) {
+	// A command writing to stderr should not cause an error by itself.
+	err := Execute([]string{"echo error-output >&2"}, "/bin/sh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

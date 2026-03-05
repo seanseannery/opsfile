@@ -40,6 +40,227 @@ list-instance-ips:
 	}
 }
 
+func TestResolve_EmptyCommandsMap(t *testing.T) {
+	commands := map[string]OpsCommand{}
+	vars := OpsVariables{}
+	_, err := Resolve("anything", "prod", commands, vars)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error %q does not contain 'not found'", err.Error())
+	}
+}
+
+func TestResolve_CommandWithEmptyShellLines(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"empty": {Name: "empty", Environments: map[string][]string{"prod": {}}},
+	}
+	vars := OpsVariables{}
+	got, err := Resolve("empty", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Lines) != 0 {
+		t.Errorf("got %d lines, want 0", len(got.Lines))
+	}
+}
+
+func TestResolve_MultipleVariablesInOneLine(t *testing.T) {
+	vars, commands := parseFixture(t, `
+A=hello
+B=world
+
+my-cmd:
+    default:
+        echo $(A) $(B)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo hello world"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_VariableUsedMultipleTimes(t *testing.T) {
+	vars, commands := parseFixture(t, `
+A=val
+
+my-cmd:
+    default:
+        echo $(A) and $(A)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo val and val"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_UnclosedDollarParen(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(incomplete"},
+		}},
+	}
+	vars := OpsVariables{}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo $(incomplete"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_MixedIdentifierAndNonIdentifier(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=hello
+
+my-cmd:
+    default:
+        $(VAR) $(shell cmd)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "hello $(shell cmd)"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_DefaultFallbackVariableScoping(t *testing.T) {
+	vars, commands := parseFixture(t, `
+prod_ACCOUNT=prod-acct
+ACCOUNT=default-acct
+
+my-cmd:
+    default:
+        echo $(ACCOUNT)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo prod-acct"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_SameVarReferencedTwice(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=x
+
+my-cmd:
+    default:
+        $(VAR) $(VAR)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "x x" {
+		t.Errorf("got %q, want %q", got.Lines[0], "x x")
+	}
+}
+
+func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $("},
+		}},
+	}
+	vars := OpsVariables{}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo $("
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_EmptyToken(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $()"},
+		}},
+	}
+	vars := OpsVariables{}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo $()"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolve_ScopedLookupPriority(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(HOST)"},
+		}},
+	}
+	vars := OpsVariables{
+		"prod_HOST": "prod.example.com",
+		"HOST":      "default.example.com",
+	}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo prod.example.com" {
+		t.Errorf("got %q, want scoped value", got.Lines[0])
+	}
+}
+
+func TestResolve_UnscopedFallbackDirect(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(HOST)"},
+		}},
+	}
+	vars := OpsVariables{
+		"HOST": "default.example.com",
+	}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo default.example.com" {
+		t.Errorf("got %q, want unscoped fallback", got.Lines[0])
+	}
+}
+
+func TestResolve_MissingVariableReturnsError(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(NOPE)"},
+		}},
+	}
+	vars := OpsVariables{}
+	_, err := Resolve("my-cmd", "prod", commands, vars)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not defined") {
+		t.Errorf("error %q does not contain 'not defined'", err.Error())
+	}
+}
+
 func TestResolve_DefaultFallback(t *testing.T) {
 	vars, commands := parseFixture(t, `
 prod_AWS_ACCOUNT=1234567

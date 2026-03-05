@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -94,6 +96,39 @@ func TestParseOpsFlags(t *testing.T) {
 			input:      []string{"-z"},
 			wantErrSub: "flag provided but not defined",
 		},
+		{
+			name:      "multiple flags combined -d -s",
+			input:     []string{"-d", "-s", "prod", "cmd"},
+			wantFlags: OpsFlags{DryRun: true, Silent: true},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:       "-D with missing argument",
+			input:      []string{"-D"},
+			wantErrSub: "flag needs an argument",
+		},
+		{
+			name:       "unknown long flag --foobar",
+			input:      []string{"--foobar"},
+			wantErrSub: "flag provided but not defined",
+		},
+		{
+			name:      "flag after positional treated as positional",
+			input:     []string{"prod", "-d", "cmd"},
+			wantFlags: OpsFlags{},
+			wantPos:   []string{"prod", "-d", "cmd"},
+		},
+		{
+			name:    "-? combined with other args still returns ErrHelp",
+			input:   []string{"-?", "prod", "cmd"},
+			wantErr: ErrHelp,
+		},
+		{
+			name:      "-D with empty string value",
+			input:     []string{"-D", "", "prod", "cmd"},
+			wantFlags: OpsFlags{Directory: ""},
+			wantPos:   []string{"prod", "cmd"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -133,6 +168,46 @@ func TestParseOpsFlags(t *testing.T) {
 	}
 }
 
+func TestParseOpsFlags_HelpOutput(t *testing.T) {
+	// Capture stderr from -h to verify usage text is printed.
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+
+	_, _, gotErr := ParseOpsFlags([]string{"-h"})
+
+	w.Close()
+	os.Stderr = origStderr
+
+	captured, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(captured)
+
+	if gotErr != ErrHelp {
+		t.Fatalf("expected ErrHelp, got %v", gotErr)
+	}
+
+	for _, want := range []string{"-D", "-d", "-s", "-v"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("help output does not contain %q", want)
+		}
+	}
+
+	// Verify unknown flag error includes the flag name.
+	_, _, unknownErr := ParseOpsFlags([]string{"--foobar"})
+	if unknownErr == nil {
+		t.Fatal("expected error for --foobar, got nil")
+	}
+	if !strings.Contains(unknownErr.Error(), "foobar") {
+		t.Errorf("error %q does not mention the unknown flag name 'foobar'", unknownErr.Error())
+	}
+}
+
 func TestParseOpsArgs(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -162,6 +237,32 @@ func TestParseOpsArgs(t *testing.T) {
 			name:       "only env",
 			input:      []string{"prod"},
 			wantErrSub: "missing command",
+		},
+		{
+			name:     "many passthrough args preserved in order",
+			input:    []string{"prod", "cmd", "arg1", "arg2", "arg3"},
+			wantEnv:  "prod",
+			wantCmd:  "cmd",
+			wantArgs: []string{"arg1", "arg2", "arg3"},
+		},
+		{
+			name:    "hyphenated env and command names",
+			input:   []string{"my-env", "my-cmd"},
+			wantEnv: "my-env",
+			wantCmd: "my-cmd",
+		},
+		{
+			name:    "empty string in positionals",
+			input:   []string{"", "cmd"},
+			wantEnv: "",
+			wantCmd: "cmd",
+		},
+		{
+			name:     "flag-like values in passthrough are not consumed",
+			input:    []string{"prod", "cmd", "--verbose", "-n", "5"},
+			wantEnv:  "prod",
+			wantCmd:  "cmd",
+			wantArgs: []string{"--verbose", "-n", "5"},
 		},
 	}
 
