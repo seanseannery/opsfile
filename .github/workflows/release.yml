@@ -1,12 +1,17 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'examples/Opsfile*'
   workflow_dispatch:
     inputs:
       bump:
         description: "Version bump type"
         required: false
-        default: patch
+        default: minor
         type: choice
         options:
           - patch
@@ -14,27 +19,38 @@ on:
           - major
 
 jobs:
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run tests
+        run: make test
+
   release:
+    name: Release
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Test
-        run: make test
-
-      - name: Build release binaries
-        run: make release BUMP=${{ inputs.bump }}
-
-      - name: Read new version
+      - name: Bump version
         id: version
         run: |
+          BUMP=${{ inputs.bump || 'minor' }}
+          make release BUMP=$BUMP
           version=$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go)
           echo "version=$version" >> $GITHUB_OUTPUT
 
@@ -43,7 +59,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add internal/version.go
-          git commit -m "chore: bump version to v${{ steps.version.outputs.version }}"
+          git commit -m "release: bump version to v${{ steps.version.outputs.version }} [no ci]"
           git push
 
       - name: Create GitHub release
@@ -51,7 +67,5 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          files: |
-            ops_unix
-            ops_darwin
-            ops.exe
+          generate_release_notes: true
+          files: bin/ops_*

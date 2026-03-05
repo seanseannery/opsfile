@@ -1,0 +1,93 @@
+name: PR Workflow
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
+      - 'examples/Opsfile*'
+
+jobs:
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Lint
+        run: make lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: make test
+
+  pr-title:
+    name: PR Title (Conventional Commits)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pr-body:
+    name: PR Template Sections
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required sections are present and filled out
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, sys
+
+          body = os.environ.get("PR_BODY", "")
+
+          required = [
+              "## What is the Change",
+              "## Why do we need this?",
+              "## New modules introduced",
+              "## How was it tested?",
+          ]
+
+          # Split body into sections on lines that start with "## "
+          sections = re.split(r'\n(?=## )', body)
+
+          missing = []
+          empty   = []
+
+          for heading in required:
+              block = next((s for s in sections if s.startswith(heading)), None)
+              if block is None:
+                  missing.append(heading)
+                  continue
+              # Strip the heading line, remove HTML comments, trim whitespace
+              content = block[len(heading):]
+              content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL).strip()
+              if not content:
+                  empty.append(heading)
+
+          if missing:
+              print("PR body is missing required sections:")
+              for s in missing:
+                  print(f"  - {s}")
+          if empty:
+              print("PR body sections have not been filled out (remove or replace the placeholder comments):")
+              for s in empty:
+                  print(f"  - {s}")
+          if missing or empty:
+              sys.exit(1)
+
+          print("All required PR template sections are present and filled out.")
+          EOF

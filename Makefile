@@ -9,11 +9,11 @@ BINARY_NAME=ops
 BUMP ?= patch
 
 ## build: build binary to bin/ops
-build:
+build: clean
 	go build -o bin/$(BINARY_NAME) ./cmd/ops
 
 ## release: bump version and build release binaries (BUMP=major|minor|patch, default: patch)
-release:
+release: clean
 	@set -e; \
 	current=$$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go); \
 	major=$$(echo $$current | cut -d. -f1); \
@@ -28,9 +28,12 @@ release:
 	new="$$major.$$minor.$$patch"; \
 	echo "Bumping version: $$current -> $$new"; \
 	perl -pi -e "s/\"$$current\"/\"$$new\"/" internal/version.go
-	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -a -ldflags="-w -s" -o $(BINARY_NAME)_unix    ./cmd/ops
-	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -a -ldflags="-w -s" -o $(BINARY_NAME)_darwin  ./cmd/ops
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -ldflags="-w -s" -o $(BINARY_NAME).exe     ./cmd/ops
+	@set -e; \
+	v=$$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go); \
+	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_unix_v$$v    ./cmd/ops; \
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_darwin_v$$v  ./cmd/ops; \
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_v$$v.exe     ./cmd/ops; \
+	echo "Built: bin/$(BINARY_NAME)_unix_v$$v  bin/$(BINARY_NAME)_darwin_v$$v  bin/$(BINARY_NAME)_v$$v.exe"
 
 ## run: build and run the binary
 run:
@@ -40,10 +43,7 @@ run:
 ## clean: remove build artifacts
 clean:
 	go clean
-	rm -f $(BINARY_NAME)
-	rm -f $(BINARY_NAME)_unix
-	rm -f $(BINARY_NAME)_darwin
-	rm -f $(BINARY_NAME).exe
+	rm -f bin/$(BINARY_NAME)*
 
 ## deps: download and tidy Go module dependencies
 deps:

@@ -9,11 +9,11 @@ INSTALL_DIR="/usr/local/bin"
 
 OS="$(uname -s)"
 case "$OS" in
-  Linux*)   ASSET="ops_unix" ;;
-  Darwin*)  ASSET="ops_darwin" ;;
+  Linux*)   ASSET="ops_unix_v" ;;
+  Darwin*)  ASSET="ops_darwin_v" ;;
   *)
     echo "Error: unsupported operating system: $OS" >&2
-    echo "Windows users: download ops.exe from https://github.com/$REPO/releases/latest" >&2
+    echo "Windows users: download ops_v<version>.exe from https://github.com/$REPO/releases/latest" >&2
     exit 1
     ;;
 esac

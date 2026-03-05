@@ -24,7 +24,8 @@
   ├── examples/         Reference Opsfile showing variables, env blocks, and multiline commands                                                                                      
   ├── install/          Curl-pipe shell installer script for end-users                                                                                                                             
   ├── bin/              Compiled binary output (gitignored)
-  ├── docs/             User, feature, and architecture documentation and help
+  ├── docs/             Feature requirements and implementation/architecture documentation
+  ├──── testplans/      Documentation for steps required to automatically or manually test features.
   │
   ├── go.mod            Module declaration (sean_seannery/opsfile, Go 1.25+, no external deps)
   ├── CLAUDE.md         Links to AGENTS.md since claude doesnt support it natively
