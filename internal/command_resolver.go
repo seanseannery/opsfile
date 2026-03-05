@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -96,13 +97,22 @@ func substituteVars(line, env string, vars OpsVariables) (string, error) {
 	return b.String(), nil
 }
 
-// resolveVar looks up varName with env-scoped priority:
-// env_VAR_NAME is checked before VAR_NAME.
+// resolveVar looks up varName using a four-level priority chain:
+//  1. Opsfile env-scoped  (vars["env_VAR"])
+//  2. Shell env-scoped    (os.Getenv("env_VAR"))
+//  3. Opsfile unscoped    (vars["VAR"])
+//  4. Shell unscoped      (os.Getenv("VAR"))
 func resolveVar(varName, env string, vars OpsVariables) (string, error) {
 	if val, ok := vars[env+"_"+varName]; ok {
 		return val, nil
 	}
+	if val, ok := os.LookupEnv(env + "_" + varName); ok {
+		return val, nil
+	}
 	if val, ok := vars[varName]; ok {
+		return val, nil
+	}
+	if val, ok := os.LookupEnv(varName); ok {
 		return val, nil
 	}
 	return "", fmt.Errorf("variable %q not defined for environment %q", varName, env)

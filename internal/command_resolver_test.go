@@ -425,3 +425,223 @@ deploy:
 		}
 	}
 }
+
+// --- Shell environment variable injection tests ---
+
+func TestResolveVar_UnscopedShellEnvFallback(t *testing.T) {
+	t.Setenv("VAR", "from-shell")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo from-shell" {
+		t.Errorf("got %q, want shell unscoped value", got.Lines[0])
+	}
+}
+
+func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
+	t.Setenv("prod_VAR", "shell-scoped")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo shell-scoped" {
+		t.Errorf("got %q, want shell env-scoped value", got.Lines[0])
+	}
+}
+
+func TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped(t *testing.T) {
+	t.Setenv("prod_VAR", "shell-scoped")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	vars := OpsVariables{"prod_VAR": "opsfile-scoped"}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo opsfile-scoped" {
+		t.Errorf("got %q, want Opsfile env-scoped value", got.Lines[0])
+	}
+}
+
+func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
+	t.Setenv("prod_VAR", "shell-scoped")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	vars := OpsVariables{"VAR": "opsfile-unscoped"}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo shell-scoped" {
+		t.Errorf("got %q, want shell env-scoped over Opsfile unscoped", got.Lines[0])
+	}
+}
+
+func TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped(t *testing.T) {
+	t.Setenv("VAR", "shell-unscoped")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	vars := OpsVariables{"VAR": "opsfile-unscoped"}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo opsfile-unscoped" {
+		t.Errorf("got %q, want Opsfile unscoped over shell unscoped", got.Lines[0])
+	}
+}
+
+func TestResolveVar_ShellEnvUnscopedIsLastResort(t *testing.T) {
+	t.Setenv("VAR", "shell-unscoped")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo shell-unscoped" {
+		t.Errorf("got %q, want shell unscoped as last resort", got.Lines[0])
+	}
+}
+
+func TestResolveVar_PriorityChain(t *testing.T) {
+	tests := []struct {
+		name        string
+		opsfileVars OpsVariables
+		envVars     map[string]string // shell env vars to set
+		want        string
+	}{
+		{
+			name:        "level1 opsfile env-scoped wins",
+			opsfileVars: OpsVariables{"prod_VAR": "L1", "VAR": "L3"},
+			envVars:     map[string]string{"prod_VAR": "L2", "VAR": "L4"},
+			want:        "L1",
+		},
+		{
+			name:        "level2 shell env-scoped wins",
+			opsfileVars: OpsVariables{"VAR": "L3"},
+			envVars:     map[string]string{"prod_VAR": "L2", "VAR": "L4"},
+			want:        "L2",
+		},
+		{
+			name:        "level3 opsfile unscoped wins",
+			opsfileVars: OpsVariables{"VAR": "L3"},
+			envVars:     map[string]string{"VAR": "L4"},
+			want:        "L3",
+		},
+		{
+			name:        "level4 shell unscoped wins",
+			opsfileVars: OpsVariables{},
+			envVars:     map[string]string{"VAR": "L4"},
+			want:        "L4",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.envVars {
+				t.Setenv(k, v)
+			}
+			commands := map[string]OpsCommand{
+				"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+					"prod": {"echo $(VAR)"},
+				}},
+			}
+			got, err := Resolve("my-cmd", "prod", commands, tc.opsfileVars)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			want := "echo " + tc.want
+			if got.Lines[0] != want {
+				t.Errorf("got %q, want %q", got.Lines[0], want)
+			}
+		})
+	}
+}
+
+func TestResolveVar_MixedSources(t *testing.T) {
+	t.Setenv("B", "from-shell")
+	vars := OpsVariables{"A": "from-opsfile"}
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(A) $(B)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo from-opsfile from-shell" {
+		t.Errorf("got %q, want mixed source substitution", got.Lines[0])
+	}
+}
+
+func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
+	t.Setenv("VAR", "")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Lines[0] != "echo " {
+		t.Errorf("got %q, want empty string substitution", got.Lines[0])
+	}
+}
+
+func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
+	t.Setenv("aws", "should-not-matter")
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(aws ec2 describe-instances)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "echo $(aws ec2 describe-instances)"
+	if got.Lines[0] != want {
+		t.Errorf("got %q, want %q", got.Lines[0], want)
+	}
+}
+
+func TestResolveVar_AbsentFromAllSources(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(DEFINITELY_NOT_SET_XYZ123)"},
+		}},
+	}
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not defined") {
+		t.Errorf("error %q does not contain 'not defined'", err.Error())
+	}
+}

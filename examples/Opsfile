@@ -12,6 +12,21 @@ prod_CLUSTER=my-service-prod
 preprod_CLUSTER=my-service-preprod
 
 
+# Shell environment variables can also be referenced with $(VAR_NAME).
+# They are injected automatically — no declaration needed in the Opsfile.
+# Resolution priority (highest to lowest):
+#   1. Opsfile env-scoped   (e.g. prod_VAR=...)
+#   2. Shell env-scoped     (e.g. export prod_VAR=... in your terminal)
+#   3. Opsfile unscoped     (e.g. VAR=...)
+#   4. Shell unscoped       (e.g. export VAR=... in your terminal)
+#
+# Example: AWS_PROFILE is not defined in this Opsfile, so ops reads it
+# from your shell session at runtime.
+show-profile:
+    default:
+        echo "Using AWS profile: $(AWS_PROFILE)"
+
+
 # Tail CloudWatch logs.
 # The default command works for both prod and preprod (variables handle the difference).
 # Local overrides to use docker instead.

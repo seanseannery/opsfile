@@ -63,7 +63,7 @@
   # Variables — prefix with environment name to scope them
   prod_AWS_ACCOUNT=1234567
   preprod_AWS_ACCOUNT=8765431
-  
+
   # Commands — define per-environment shell lines
   # Use "default" as a fallback when env-specific block is absent
   tail-logs:
@@ -77,6 +77,12 @@
           aws ec2 --list-instances
       preprod:
           aws ecs cluster --list-instances
+
+  # Shell environment variables are injected automatically using the same $(VAR) syntax.
+  # No declaration needed — if ops cant find in the Opsfile, it will fall back to env variables
+  show-profile:
+      default:
+          echo "Using AWS profile: $(AWS_PROFILE)"
   ```
 
   > [!TIP] 
