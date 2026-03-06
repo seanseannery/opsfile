@@ -1,0 +1,19 @@
+name: Feature Request
+description: Propose a new feature or enhancement for the ops CLI
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem This Solves
+      description: What problem or limitation are you running into? Why is this needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe your proposed solution. Include any relevant examples, commands, or Opsfile syntax.
+    validations:
+      required: true
