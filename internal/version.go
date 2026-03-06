@@ -4,4 +4,4 @@ package internal
 // Override at build time with:
 //
 //	go build -ldflags="-X sean_seannery/opsfile/internal.Version=1.2.3" ./cmd/ops/
-var Version = "0.7.0"
+var Version = "0.8.0"
