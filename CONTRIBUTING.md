@@ -9,7 +9,7 @@ Thanks for your interest in `opsfile`! Contributions are welcome — whether it'
 ### Setting up your Development Environment
 
 ```bash
-brew install go@.25.5
+make setup-local-dev
 ```
 
 ### Building and Running Tests

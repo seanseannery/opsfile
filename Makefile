@@ -1,4 +1,4 @@
-.PHONY: build release run clean lint help
+.PHONY: build release run clean lint help setup-local-dev
 
 ## help: show this help message
 help:
@@ -7,6 +7,17 @@ help:
 # Go parameters
 BINARY_NAME=ops
 BUMP ?= patch
+
+## install-hooks: install go, and any other dependencies and githooks from .githooks/ 
+setup-local-dev:
+	@if ! command -v go &>/dev/null; then \
+		brew install go@1.25.5; \
+		echo "Installed golang"; \
+	fi
+	make deps
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed from .githooks/"
+	
 
 ## build: build binary to bin/ops
 build: clean
