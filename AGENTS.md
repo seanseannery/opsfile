@@ -68,6 +68,7 @@
     - Follow [Google Go Style Decisions](https://google.github.io/styleguide/go/decisions) to the best of your effort
     - Follow trunk-based development flow, using feature branches and conventional commit standards for commit and pr title naming
       - **Commits** — use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`. Subject line under 72 characters, imperative mood.
+      - Before committing, check the current branch name and verify it is scoped to the work being committed. If the current branch is `main` or is focused on a different feature/topic than the changes being committed, create a new appropriately-named branch first (following the naming conventions in CONTRIBUTING.md) before committing. New branches must always be created off of `main` unless the user explicitly instructs otherwise.
 
 
   ### Must Do
@@ -75,6 +76,7 @@
   - check the Go version in `go.mod` and use idiomatic features and libraries available at that version
   - always follow external package changes with `go mod tidy`
   - Tests that parse example files in `examples/` must be updated when new example Opsfiles are added.
+  - Always check for remote code changes before starting development or committing changes.  Prefer rebase from remote `main` into the current feature branch by using `git pull --rebase origin main`. Dont resolve conflicts, instead prompt the user.
 
   ### Must NOT Do
   - do not add new heavy dependencies without approval. do not use dependencies that have small, inactive communities or known vulnerabilites.
@@ -82,12 +84,14 @@
   - Never read or load LICENSE file into context unless explicitly asked
   - Do NOT include a `Co-Authored-By` trailer in commit messages or wrap in a HEREDOC unnecessarily
   - Tests must not pin to values that change between releases (version strings, build timestamps). Validate shape/format instead (e.g. semver regex, non-empty check).
+  - Never resolve git merge or rebase conflicts without user input.
 
   ### Should Do
   - If new directories are created or detected. update this AGENTS.md directory structure section.
-  - When asked to "commit this", run `make lint` and `make test` first unless the user says otherwise
+  - When asked to "commit this", run `make lint` and `make test` first unless no .go files were changed or if the user says otherwise
   - Prefer using `make` commands for build, test, lint activities over direct go cli commands (unless testing smaller, single-file changes).
   - Adhere .github/pull_request_template.md structure if asked to create a pull request
+  - When told `commit and push` also create a github pull request describing the change.
 
   ### Allowed without prompt:
   - read files, list files, `ls`
