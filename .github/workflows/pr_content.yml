@@ -31,10 +31,10 @@ jobs:
           body = os.environ.get("PR_BODY", "")
 
           required = [
-              "## What is the Change",
+              "## Key Changes",
               "## Why do we need this?",
-              "## New modules introduced",
-              "## How was it tested?",
+              "## New modules or other dependencies introduced",
+              "## How was this tested?",
           ]
 
           # Split body into sections on lines that start with "## "

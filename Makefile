@@ -6,7 +6,9 @@ help:
 
 # Go parameters
 BINARY_NAME=ops
-BUMP ?= patch
+VERSION     ?= $(shell git describe --tags --always --dirty)
+COMMIT      ?= $(shell git rev-parse --short HEAD)
+LD_FLAGS    := -w -s -X sean_seannery/opsfile/internal.Version=$(VERSION) -X sean_seannery/opsfile/internal.Commit=$(COMMIT)
 
 ## install-hooks: install go, and any other dependencies and githooks from .githooks/ 
 setup-local-dev:
@@ -21,35 +23,20 @@ setup-local-dev:
 
 ## build: build binary to bin/ops
 build: clean
-	go build -o bin/$(BINARY_NAME) ./cmd/ops
+	go build -ldflags="$(LD_FLAGS)" -o bin/$(BINARY_NAME) ./cmd/ops
 
-## release: bump version and build release binaries (BUMP=major|minor|patch, default: patch)
+## release: build release binaries for all platforms (VERSION and COMMIT set via git or overridden externally)
 release: clean
-	@set -e; \
-	current=$$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go); \
-	major=$$(echo $$current | cut -d. -f1); \
-	minor=$$(echo $$current | cut -d. -f2); \
-	patch=$$(echo $$current | cut -d. -f3); \
-	case "$(BUMP)" in \
-		major) major=$$((major + 1)); minor=0; patch=0 ;; \
-		minor) minor=$$((minor + 1)); patch=0 ;; \
-		patch) patch=$$((patch + 1)) ;; \
-		*) echo "Error: BUMP must be 'major', 'minor', or 'patch'"; exit 1 ;; \
-	esac; \
-	new="$$major.$$minor.$$patch"; \
-	echo "Bumping version: $$current -> $$new"; \
-	perl -pi -e "s/\"$$current\"/\"$$new\"/" internal/version.go
-	@set -e; \
-	v=$$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go); \
-	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_unix_v$$v    ./cmd/ops; \
-	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_darwin_v$$v  ./cmd/ops; \
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -ldflags="-w -s" -o bin/$(BINARY_NAME)_v$$v.exe     ./cmd/ops; \
-	echo "Built: bin/$(BINARY_NAME)_unix_v$$v  bin/$(BINARY_NAME)_darwin_v$$v  bin/$(BINARY_NAME)_v$$v.exe"
+	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -a -ldflags="$(LD_FLAGS)" -o bin/$(BINARY_NAME)_unix_$(VERSION)    ./cmd/ops
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -a -ldflags="$(LD_FLAGS)" -o bin/$(BINARY_NAME)_darwin_$(VERSION)  ./cmd/ops
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -ldflags="$(LD_FLAGS)" -o bin/$(BINARY_NAME)_$(VERSION).exe     ./cmd/ops
+	@echo "Built: bin/$(BINARY_NAME)_unix_$(VERSION)  bin/$(BINARY_NAME)_darwin_$(VERSION)  bin/$(BINARY_NAME)_$(VERSION).exe"
 
 ## run: build and run the binary
 run:
 	go build -o bin/$(BINARY_NAME) ./cmd/ops
-	./bin/$(BINARY_NAME)
+	./bin/$(BINARY_NAME) --version
+	./bin/$(BINARY_NAME) --help
 
 ## clean: remove build artifacts
 clean:

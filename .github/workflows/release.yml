@@ -1,11 +1,6 @@
-name: Release
+name: Release Version
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'examples/Opsfile*'
   workflow_dispatch:
     inputs:
       bump:
@@ -46,26 +41,48 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Bump version
+      - name: Create version tag
         id: version
         run: |
           BUMP=${{ inputs.bump || 'patch' }}
-          make release BUMP=$BUMP
-          version=$(sed -n 's/.*Version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' internal/version.go)
-          echo "version=$version" >> $GITHUB_OUTPUT
+          current=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          current=${current#v}
+          major=$(echo $current | cut -d. -f1)
+          minor=$(echo $current | cut -d. -f2)
+          patch=$(echo $current | cut -d. -f3)
 
-      - name: Commit and push version bump
-        run: |
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          VERSION="v$major.$minor.$patch"
+          COMMIT=$(git rev-parse --short HEAD)
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add internal/version.go
-          git commit -m "release: bump version to v${{ steps.version.outputs.version }} [no ci]"
-          git push
+          git tag $VERSION
+          git push origin $VERSION
 
-      - name: Create GitHub release
+      - name: Build release binaries
+        run: make release VERSION=${{ steps.version.outputs.version }} COMMIT=${{ steps.version.outputs.commit }}
+
+      - name: Generate changelog Cliffnotes
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: .github/workflows/cliff.toml
+          args: --latest --strip header
+
+      - name: Upload GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
           generate_release_notes: true
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.content }}
           files: bin/ops_*

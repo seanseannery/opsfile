@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+commit_msg=$(cat "$1")
+
+# Conventional commit pattern:
+# <type>(<optional scope>): <description>
+# Types: feat, fix, docs, refactor, test, chore, ci, perf, build, revert
+pattern='^(feat|fix|docs|refactor|test|chore|ci|perf|build|revert)(\([a-zA-Z0-9_-]+\))?: .+'
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+  echo "error: commit message does not follow Conventional Commits format."
+  echo ""
+  echo "  Expected: <type>(<scope>): <description>"
+  echo "  Example:  feat(parser): add support for env variables"
+  echo ""
+  echo "  Allowed types: feat, fix, docs, refactor, test, chore, ci, perf, build, revert"
+  echo ""
+  echo "  Got: $commit_msg"
+  exit 1
+fi

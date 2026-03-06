@@ -27,7 +27,7 @@ func main() {
 	}
 
 	if flags.Version {
-		fmt.Printf("ops version %s (%s/%s)\n", internal.Version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("ops version %s (commit: %s) %s/%s\n", internal.Version, internal.Commit, runtime.GOOS, runtime.GOARCH)
 		os.Exit(0)
 	}
 
