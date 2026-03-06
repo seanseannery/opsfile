@@ -30,7 +30,6 @@ func TestParseExamples_AllFilesParseWithoutError(t *testing.T) {
 	}
 }
 
-
 // writeTempOpsfile writes content to a temp file and returns its path.
 func writeTempOpsfile(t *testing.T, content string) string {
 	t.Helper()

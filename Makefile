@@ -54,10 +54,13 @@ test:
 
 ## lint: check formatting (gofmt) and run static analysis (go vet)
 lint:
-	@unformatted=$$(gofmt -l .); \
+	@echo "--- gofmt ---"; \
+	unformatted=$$(gofmt -l .); \
 	if [ -n "$$unformatted" ]; then \
-		echo "gofmt: the following files need formatting:"; \
+		echo "FAIL: the following files need formatting:"; \
 		echo "$$unformatted"; \
+		echo "Run: gofmt -w <file> to fix"; \
 		exit 1; \
-	fi
-	go vet ./...
+	fi; \
+	@echo "--- go vet ---"
+	go vet ./... 
