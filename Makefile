@@ -61,6 +61,6 @@ lint:
 		echo "$$unformatted"; \
 		echo "Run: gofmt -w <file> to fix"; \
 		exit 1; \
-	fi; \
+	fi; 
 	@echo "--- go vet ---"
 	go vet ./... 
