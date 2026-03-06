@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "pre-push: checking branch naming standards..."
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+branch_pattern='^(feat|fix|refactor|test|docs|chore|ci|perf|build|revert)/[a-z0-9][a-z0-9-]*$'
+
+if [[ "$branch" != "main" && "$branch" != "HEAD" ]]; then
+  if ! echo "$branch" | grep -qE "$branch_pattern"; then
+    echo " ERROR: branch name '$branch' does not follow the required naming convention."
+    echo ""
+    echo "  Expected: <type>/<short-description>"
+    echo "  Example:  feat/add-flag-support, fix/resolve-issue-123"
+    echo ""
+    echo "  Allowed types: feat, fix, refactor, test, docs, chore, ci, perf, build, revert"
+    echo "  Rules: lowercase, alphanumeric and hyphens only (no uppercase, no underscores)"
+    echo ""
+    echo " To fix:  'git branch -m '$branch' <newname>' then try pushing again"
+    exit 1
+  fi
+fi
+
+echo "pre-push: running lint..."
+make lint
+
+echo "pre-push: running tests..."
+make test

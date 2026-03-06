@@ -2,9 +2,7 @@
 
 ## What does `ops` do?
 
-  It's a cli tool, essentially like `make` and `makefiles` but for sharing and executing live-operations / on-call commands for the repo.
-
-  Simply create an `Opsfile` in your repo with common on-call commands your team uses and run it with `ops [env] <command>`.
+  It's a cli tool, essentially like `make` and `makefiles` but for sharing and executing live-operations / on-call commands for the repo.  Simply create an `Opsfile` in your repo with common on-call commands your team uses and run it with `ops [env] <command>`.
 
 ## Installation
 
@@ -26,11 +24,11 @@
   3. **Knowledge Sharing:** Share common commands with your team for easier onboarding and debugging
   4. **Encapsulation:** keep your Makefile small and focused on CI/CD tasks
 
-  Makefiles are a great way to build, test, spin-up local dev environments, and common CI actions without having to memorize the associated maven/docker/npm/gradle/k8s specifics. Additionally, makefiles makes it easy to onboard new engineers to the repo and share common CI scripts with teammates.
+  Makefiles are a great way to build, test, spin-up local dev environments, and other common CI actions without having to memorize the associated maven/docker/npm/gradle/k8s specifics. Additionally, makefiles make it easy to onboard new engineers to the repo and share common CI scripts with teammates.
 
-  The other commands and scripts that often get reused and passed around are the operational/on-call tasks.  Checking logs, getting IP addresses or instance counts, viewing dashboards, etc. I get paged and I need to tail logs, or suppress an alarm, or get instance IPs. But Makefiles aren't the right place for commands like that. Additionally, its not fun remembering the 5 cli arguments kubectl needs to display logs for a specific container while my manager is asking for a status update on the outage.
+  In my experience, the other commands and scripts that often get passed around are the operational/on-call tasks.  Checking logs, getting IP addresses or instance counts, viewing dashboards, etc. I get paged and I need to tail logs, or suppress an alarm, or get instance IPs under pressure. But it's not fun remembering the 5 cli arguments kubectl needs to display logs for a specific container while my manager is asking for a status update on the outage. Additionally, Makefiles aren't the right place for non-ci commands like that.
 
-  So rather than copy/pasting gists with bash aliases from team member to team member, or creating a "tools" repo with a bunch of adhoc scripts that doesn't get maintained, I thought I would create a tool, based on an established model, to make live operations on a repo or service more standardized, shareable, and easier.
+  So rather than copy/pasting gists with bash aliases from team member to team member, or creating a "tools" repo with a bunch of adhoc scripts that doesn't get maintained, I thought I would create a tool, based on an established model (`make`), to improve live operations on a service and make it more standardized, shareable, and easier.
 
 
 ## Getting started
@@ -66,8 +64,10 @@
   ```
 
   > [!TIP] 
-  > There are more sample Opsfile examples in the `/examples` folder
+  > There are more sample Opsfile examples in the `/examples` folder.
 
+  > [!WARNING] 
+  > Be sure not to include any secrets or access keys into your Opsfile as they could get shared visibly once committed to the repo.  Instead you can inject your secrets into the Opsfile via environment variables if needed.
 
   ### Step 2: Call the `ops` CLI
 
@@ -92,8 +92,8 @@
   > [!TIP] 
   > If you want, you could even alias the ops+env command in your terminal profile to make it even more user friendly
   >```bash
-  >alias prod="ops prod"
-  >alias preprod="ops preprod"
+  >$> alias prod="ops prod"
+  >$> prod tail-logs
   >```
 
   > [!TIP] 

@@ -17,8 +17,8 @@ setup-local-dev:
 		echo "Installed golang"; \
 	fi
 	make deps
-	git config core.hooksPath .githooks
-	@echo "Git hooks installed from .githooks/"
+	git config core.hooksPath .github/.githooks
+	@echo "Git hooks installed from ./.github/.githooks/"
 	
 
 ## build: build binary to bin/ops
