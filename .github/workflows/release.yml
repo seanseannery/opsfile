@@ -11,7 +11,7 @@ on:
       bump:
         description: "Version bump type"
         required: false
-        default: minor
+        default: patch
         type: choice
         options:
           - patch

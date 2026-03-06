@@ -1,35 +1,11 @@
-name: PR Workflow
+name: PR Content Check
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
-    paths-ignore:
-      - '**/*.md'
-      - 'examples/Opsfile*'
+    types: [opened, edited, reopened]
+
 
 jobs:
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Lint
-        run: make lint
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Test
-        run: make test
 
   pr-title:
     name: PR Title (Conventional Commits)
