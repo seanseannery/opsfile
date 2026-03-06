@@ -1,0 +1,77 @@
+prod_AWS_REGION=us-east-1
+staging_AWS_REGION=us-west-2
+
+prod_CLUSTER=my-service-prod
+staging_CLUSTER=my-service-staging
+
+prod_LOG_GROUP=/aws/ecs/my-service-prod
+staging_LOG_GROUP=/aws/ecs/my-service-staging
+
+prod_ALB_ARN=arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-service-prod/abc123
+staging_ALB_ARN=arn:aws:elasticloadbalancing:us-west-2:987654321098:loadbalancer/app/my-service-staging/def456
+
+TARGET_GROUP_ARN=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/my-service/abc123
+
+tail-logs:
+    default:
+        aws logs tail $(LOG_GROUP) \
+            --follow \
+            --since 15m \
+            --region $(AWS_REGION)
+
+instance-count:
+    default:
+        aws ecs describe-services \
+            --cluster $(CLUSTER) \
+            --services my-service \
+            --region $(AWS_REGION) \
+            --query "services[0].{Running:runningCount,Desired:desiredCount,Pending:pendingCount}"
+
+check-alarms:
+    default:
+        aws cloudwatch describe-alarms \
+            --state-value ALARM \
+            --region $(AWS_REGION) \
+            --query "MetricAlarms[*].{Name:AlarmName,Reason:StateReason}" \
+            --output table
+
+error-rate:
+    default:
+        aws logs filter-log-events \
+            --log-group-name $(LOG_GROUP) \
+            --start-time $(shell date -d '30 minutes ago' +%s000) \
+            --filter-pattern "ERROR" \
+            --region $(AWS_REGION) \
+            --query "length(events)" \
+            --output text
+
+unhealthy-targets:
+    prod:
+        aws elbv2 describe-target-health \
+            --target-group-arn $(prod_ALB_ARN) \
+            --region $(AWS_REGION) \
+            --query "TargetHealthDescriptions[?TargetHealth.State!='healthy'].{Id:Target.Id,State:TargetHealth.State,Reason:TargetHealth.Reason}" \
+            --output table
+    staging:
+        aws elbv2 describe-target-health \
+            --target-group-arn $(staging_ALB_ARN) \
+            --region $(AWS_REGION) \
+            --query "TargetHealthDescriptions[?TargetHealth.State!='healthy'].{Id:Target.Id,State:TargetHealth.State,Reason:TargetHealth.Reason}" \
+            --output table
+
+rollback:
+    default:
+        aws ecs update-service \
+            --cluster $(CLUSTER) \
+            --service my-service \
+            --task-definition $(shell aws ecs describe-task-definition --task-definition my-service --query "taskDefinition.taskDefinitionArn" --output text --region $(AWS_REGION)) \
+            --force-new-deployment \
+            --region $(AWS_REGION)
+
+recent-deploys:
+    default:
+        aws ecs list-task-definition-families \
+            --family-prefix my-service \
+            --status ACTIVE \
+            --region $(AWS_REGION) \
+            --output table

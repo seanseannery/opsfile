@@ -1,0 +1,82 @@
+prod_NAMESPACE=my-service-prod
+staging_NAMESPACE=my-service-staging
+local_NAMESPACE=my-service-local
+
+prod_CONTEXT=arn:aws:eks:us-east-1:123456789012:cluster/prod-cluster
+staging_CONTEXT=arn:aws:eks:us-west-2:987654321098:cluster/staging-cluster
+
+DEPLOYMENT=my-service
+CONTAINER=app
+
+pod-count:
+    default:
+        kubectl get pods \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT) \
+            --output wide
+
+check-resources:
+    default:
+        kubectl top pods \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT)
+    local:
+        kubectl top pods --namespace $(NAMESPACE)
+
+cluster-events:
+    default:
+        kubectl get events \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT) \
+            --sort-by='.lastTimestamp' \
+            --field-selector type=Warning
+
+exec-pod:
+    default:
+        kubectl exec -it \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT) \
+            $(shell kubectl get pod -n $(NAMESPACE) --context $(CONTEXT) -l app=$(DEPLOYMENT) -o jsonpath='{.items[0].metadata.name}') \
+            -- /bin/sh
+    local:
+        kubectl exec -it \
+            --namespace $(NAMESPACE) \
+            $(shell kubectl get pod -n $(NAMESPACE) -l app=$(DEPLOYMENT) -o jsonpath='{.items[0].metadata.name}') \
+            -- /bin/sh
+
+restart:
+    default:
+        kubectl rollout restart deployment/$(DEPLOYMENT) \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT)
+    local:
+        kubectl rollout restart deployment/$(DEPLOYMENT) --namespace $(NAMESPACE)
+
+rollback:
+    default:
+        kubectl rollout undo deployment/$(DEPLOYMENT) \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT)
+
+tail-logs:
+    default:
+        kubectl logs \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT) \
+            --selector app=$(DEPLOYMENT) \
+            --container $(CONTAINER) \
+            --follow \
+            --tail 100
+    local:
+        kubectl logs \
+            --namespace $(NAMESPACE) \
+            --selector app=$(DEPLOYMENT) \
+            --follow \
+            --tail 100
+
+health-check:
+    default:
+        kubectl get deployment $(DEPLOYMENT) \
+            --namespace $(NAMESPACE) \
+            --context $(CONTEXT) \
+            --output jsonpath='{.status.conditions[*].message}'

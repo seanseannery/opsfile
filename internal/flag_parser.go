@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"runtime"
 	"slices"
 )
 
@@ -45,6 +46,7 @@ func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
 	fs.BoolVar(ver, "version", false, "print the ops version and exit")
 
 	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "ops version %s (commit: %s) %s/%s\n\n", Version, Commit, runtime.GOOS, runtime.GOARCH)
 		fmt.Fprint(fs.Output(), `The 'ops' command runs commonly-used live-operation commands that you define for a specific development or production environment.
 It locates the 'Opsfile' in this directory (or the nearest parent directory) and runs the commands that you define in that file.
 

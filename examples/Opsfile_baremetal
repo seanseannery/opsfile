@@ -1,0 +1,58 @@
+prod_HOST=prod-srv-01.internal
+staging_HOST=staging-srv-01.internal
+
+prod_SSH_USER=deploy
+staging_SSH_USER=deploy
+
+SERVICE_NAME=my-service
+LOG_FILE=/var/log/my-service/app.log
+
+tail-logs:
+    default:
+        ssh $(SSH_USER)@$(HOST) "tail -f $(LOG_FILE)"
+    prod:
+        ssh -i $(SSH_KEY) $(SSH_USER)@$(HOST) "tail -f $(LOG_FILE)"
+
+exec-host:
+    default:
+        ssh $(SSH_USER)@$(HOST)
+    prod:
+        ssh -i $(SSH_KEY) $(SSH_USER)@$(HOST)
+
+check-resources:
+    default:
+        ssh $(SSH_USER)@$(HOST) \
+            "echo '=== CPU ===' && top -bn1 | grep 'Cpu(s)' && \
+             echo '=== Memory ===' && free -h && \
+             echo '=== Disk ===' && df -h"
+
+restart:
+    default:
+        ssh $(SSH_USER)@$(HOST) "sudo systemctl restart $(SERVICE_NAME)"
+    prod:
+        ssh -i $(SSH_KEY) $(SSH_USER)@$(HOST) \
+            "sudo systemctl restart $(SERVICE_NAME) && \
+             sudo systemctl status $(SERVICE_NAME)"
+
+health-check:
+    default:
+        ssh $(SSH_USER)@$(HOST) "sudo systemctl status $(SERVICE_NAME) --no-pager"
+    prod:
+        curl -sf http://$(HOST):8080/health | jq .
+
+error-rate:
+    default:
+        ssh $(SSH_USER)@$(HOST) \
+            "grep -c 'ERROR' $(LOG_FILE) && \
+             echo 'errors in last 30 mins:' && \
+             awk -v d=\"$(shell date -d '30 minutes ago' '+%Y-%m-%d %H:%M')\" '\$0 >= d' $(LOG_FILE) | grep -c 'ERROR'"
+
+downstream-deps:
+    default:
+        ssh $(SSH_USER)@$(HOST) \
+            "echo '=== DB ===' && \
+             nc -zv db.internal 5432 && \
+             echo '=== Cache ===' && \
+             nc -zv cache.internal 6379 && \
+             echo '=== Queue ===' && \
+             nc -zv queue.internal 5672"

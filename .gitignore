@@ -32,3 +32,6 @@ go.work.sum
 .idea/
 .vscode/
 .claude
+
+# Macos BS
+**/.DS_Store

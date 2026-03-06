@@ -8,6 +8,29 @@ import (
 	"testing"
 )
 
+func TestParseExamples_AllFilesParseWithoutError(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	examplesDir := filepath.Join(filepath.Dir(thisFile), "..", "examples")
+
+	files, err := filepath.Glob(filepath.Join(examplesDir, "Opsfile*"))
+	if err != nil {
+		t.Fatalf("globbing examples dir: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no example Opsfiles found")
+	}
+
+	for _, path := range files {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			_, _, err := ParseOpsFile(path)
+			if err != nil {
+				t.Errorf("ParseOpsFile(%q) returned error: %v", filepath.Base(path), err)
+			}
+		})
+	}
+}
+
+
 // writeTempOpsfile writes content to a temp file and returns its path.
 func writeTempOpsfile(t *testing.T, content string) string {
 	t.Helper()

@@ -1,0 +1,69 @@
+prod_PROJECT=my-service-prod-123
+staging_PROJECT=my-service-staging-456
+
+prod_REGION=us-central1
+staging_REGION=us-east1
+
+prod_CLUSTER=prod-cluster
+staging_CLUSTER=staging-cluster
+
+SERVICE=my-service
+LOG_FILTER=resource.type="cloud_run_revision" AND resource.labels.service_name="my-service"
+
+tail-logs:
+    default:
+        gcloud logging read '$(LOG_FILTER)' \
+            --project=$(PROJECT) \
+            --limit=100 \
+            --format="value(timestamp,textPayload)" \
+            --freshness=15m
+
+instance-count:
+    default:
+        gcloud run services describe $(SERVICE) \
+            --project=$(PROJECT) \
+            --region=$(REGION) \
+            --format="value(status.observedGeneration,status.conditions[0].status)"
+
+check-resources:
+    default:
+        gcloud monitoring dashboards list \
+            --project=$(PROJECT) \
+            --filter="displayName:$(SERVICE)" \
+            --format="table(displayName,name)"
+    prod:
+        gcloud run services describe $(SERVICE) \
+            --project=$(PROJECT) \
+            --region=$(REGION) \
+            --format="yaml(spec.template.spec.containers[0].resources)"
+
+health-check:
+    default:
+        curl -sf \
+            -H "Authorization: Bearer $(shell gcloud auth print-identity-token)" \
+            $(shell gcloud run services describe $(SERVICE) --project=$(PROJECT) --region=$(REGION) --format="value(status.url)")/health
+
+error-rate:
+    default:
+        gcloud logging read '$(LOG_FILTER) AND severity>=ERROR' \
+            --project=$(PROJECT) \
+            --freshness=30m \
+            --format="value(timestamp,textPayload)" | wc -l
+
+rollback:
+    default:
+        gcloud run services update-traffic $(SERVICE) \
+            --project=$(PROJECT) \
+            --region=$(REGION) \
+            --to-revisions=$(shell gcloud run revisions list --service=$(SERVICE) --project=$(PROJECT) --region=$(REGION) --format="value(name)" --limit=2 | tail -1)=100
+
+downstream-deps:
+    default:
+        gcloud sql instances list \
+            --project=$(PROJECT) \
+            --format="table(name,state,databaseVersion,settings.tier)"
+    prod:
+        gcloud redis instances list \
+            --project=$(PROJECT) \
+            --region=$(REGION) \
+            --format="table(name,state,memorySizeGb,host,port)"

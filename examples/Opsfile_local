@@ -1,0 +1,49 @@
+COMPOSE_FILE=docker-compose.yml
+DB_CONTAINER=postgres
+CACHE_CONTAINER=redis
+APP_CONTAINER=app
+
+APP_PORT=8080
+DB_PORT=5432
+
+tail-logs:
+    default:
+        docker compose -f $(COMPOSE_FILE) logs $(APP_CONTAINER) --follow --tail 100
+
+restart:
+    default:
+        docker compose -f $(COMPOSE_FILE) restart $(APP_CONTAINER)
+    full:
+        docker compose -f $(COMPOSE_FILE) down && \
+        docker compose -f $(COMPOSE_FILE) up -d
+
+health-check:
+    default:
+        curl -sf http://localhost:$(APP_PORT)/health | jq .
+
+db-connections:
+    default:
+        docker exec $(DB_CONTAINER) \
+            psql -U $(PGUSER) -c \
+            "SELECT count(*), state FROM pg_stat_activity GROUP BY state;"
+
+flush-cache:
+    default:
+        docker exec $(CACHE_CONTAINER) redis-cli FLUSHDB
+    inspect:
+        docker exec $(CACHE_CONTAINER) \
+            redis-cli INFO memory | grep -E 'used_memory_human|maxmemory_human'
+
+check-resources:
+    default:
+        docker stats --no-stream \
+            $(APP_CONTAINER) \
+            $(DB_CONTAINER) \
+            $(CACHE_CONTAINER)
+
+downstream-deps:
+    default:
+        echo "=== Postgres ===" && \
+            docker exec $(DB_CONTAINER) pg_isready && \
+        echo "=== Redis ===" && \
+            docker exec $(CACHE_CONTAINER) redis-cli ping

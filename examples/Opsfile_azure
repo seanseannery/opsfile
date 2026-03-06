@@ -1,0 +1,73 @@
+prod_RESOURCE_GROUP=my-service-prod-rg
+staging_RESOURCE_GROUP=my-service-staging-rg
+
+prod_APP_NAME=my-service-prod
+staging_APP_NAME=my-service-staging
+
+prod_AKS_CLUSTER=my-service-aks-prod
+staging_AKS_CLUSTER=my-service-aks-staging
+
+LOG_WORKSPACE=my-service-logs
+
+tail-logs:
+    default:
+        az monitor log-analytics query \
+            --workspace $(LOG_WORKSPACE) \
+            --analytics-query "ContainerLog | where LogEntry contains 'my-service' | order by TimeGenerated desc | take 100" \
+            --subscription $(AZURE_SUBSCRIPTION_ID)
+
+instance-count:
+    default:
+        az containerapp replica list \
+            --name $(APP_NAME) \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --output table
+
+health-check:
+    default:
+        az containerapp show \
+            --name $(APP_NAME) \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --query "properties.latestRevisionFqdn" \
+            --output tsv | xargs -I{} curl -sf https://{}}/health
+
+recent-deploys:
+    default:
+        az containerapp revision list \
+            --name $(APP_NAME) \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --query "[*].{Name:name,Created:properties.createdTime,Active:properties.active,Replicas:properties.replicas}" \
+            --output table
+
+check-alarms:
+    default:
+        az monitor metrics alert list \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --query "[?enabled==\`true\`].{Name:name,Severity:severity,Condition:criteria}" \
+            --output table
+
+rollback:
+    prod:
+        az containerapp update \
+            --name $(APP_NAME) \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --revision-suffix rollback-$(shell date +%s)
+    staging:
+        az containerapp update \
+            --name $(APP_NAME) \
+            --resource-group $(RESOURCE_GROUP) \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --revision-suffix rollback-$(shell date +%s)
+
+error-rate:
+    default:
+        az monitor log-analytics query \
+            --workspace $(LOG_WORKSPACE) \
+            --analytics-query "ContainerLog | where LogEntry contains 'ERROR' | where TimeGenerated > ago(30m) | summarize count()" \
+            --subscription $(AZURE_SUBSCRIPTION_ID) \
+            --output table
