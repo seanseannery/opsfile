@@ -40,19 +40,19 @@
           <span class="terminal-dot" style="background:#28c840;"></span>
         </div>
         <div class="terminal-body">
-          <div class="line" style="animation-delay:0.5s;">
+          <div class="line">
             <span class="prompt">$</span><span class="cmd"> ops prod tail-logs</span>
           </div>
-          <div class="line" style="animation-delay:1.5s;">
+          <div class="line">
             <span class="out">Fetching logs from /aws/ecs/my-service-prod ...</span>
           </div>
-          <div class="line" style="animation-delay:2.5s;">
+          <div class="line">
             <span class="prompt">$</span><span class="cmd"> ops prod check-alarms</span>
           </div>
-          <div class="line" style="animation-delay:3.5s;">
+          <div class="line">
             <span class="out">No alarms in ALARM state. All clear.</span>
           </div>
-          <span class="cursor" style="animation-delay:3.5s;"></span>
+          <span class="cursor"></span>
         </div>
       </div>
     </div>
@@ -63,9 +63,13 @@
     <div class="container">
       <h2>Installation</h2>
       <div class="install-tabs">
+        <button class="tab-btn" data-tab="tab-curl">curl</button>
         <button class="tab-btn" data-tab="tab-brew">Homebrew</button>
         <button class="tab-btn" data-tab="tab-npm">npm</button>
-        <button class="tab-btn" data-tab="tab-curl">curl</button>
+      </div>
+
+      <div id="tab-curl" class="tab-content code-block">
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash</code></pre>
       </div>
 
       <div id="tab-brew" class="tab-content code-block">
@@ -75,10 +79,6 @@ brew install seanseannery/opsfile/opsfile</code></pre>
 
       <div id="tab-npm" class="tab-content code-block">
         <pre><code>npm install -g github:seanseannery/opsfile</code></pre>
-      </div>
-
-      <div id="tab-curl" class="tab-content code-block">
-        <pre><code>curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash</code></pre>
       </div>
     </div>
   </section>

@@ -194,17 +194,18 @@ a:hover {
   font-family: monospace;
   font-size: 0.9rem;
   line-height: 1.8;
+  text-align: left;
 }
 
-.line {
-  opacity: 0;
-  animation: appear 0.3s ease forwards;
-}
+/* Each line encodes its delay as a % of the 20s cycle so infinite loops work.
+   Line 1: appears at 0.5s (2%), Line 2: 1.5s (7%), Line 3: 2.5s (12%), Line 4: 3.5s (17%).
+   All lines fade out at 88–96% then reset to 0 for the next loop. */
+.line { opacity: 0; }
 
-.line:nth-child(1) { animation-delay: 0.5s; }
-.line:nth-child(2) { animation-delay: 1.5s; }
-.line:nth-child(3) { animation-delay: 2.5s; }
-.line:nth-child(4) { animation-delay: 3.5s; }
+.line:nth-child(1) { animation: appear-1 20s ease infinite; }
+.line:nth-child(2) { animation: appear-2 20s ease infinite; }
+.line:nth-child(3) { animation: appear-3 20s ease infinite; }
+.line:nth-child(4) { animation: appear-4 20s ease infinite; }
 
 .prompt { color: var(--green); }
 .cmd    { color: var(--bright); }
@@ -219,9 +220,28 @@ a:hover {
   animation: blink 1s step-end infinite;
 }
 
-@keyframes appear {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: none; }
+@keyframes appear-1 {
+  0%,   2%  { opacity: 0; transform: translateY(4px); }
+  4%,  88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-2 {
+  0%,   7%  { opacity: 0; transform: translateY(4px); }
+  9%,  88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-3 {
+  0%,  12%  { opacity: 0; transform: translateY(4px); }
+  14%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-4 {
+  0%,  17%  { opacity: 0; transform: translateY(4px); }
+  19%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
 }
 
 @keyframes blink {
