@@ -9,10 +9,7 @@
   },
   "license": "MIT",
   "bin": {
-    "ops": "bin/ops"
-  },
-  "scripts": {
-    "postinstall": "node install/npm_install.js"
+    "ops": "install/shim.js"
   },
   "os": ["darwin", "linux"],
   "engines": {
