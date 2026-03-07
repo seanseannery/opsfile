@@ -373,6 +373,44 @@ pre > code {
   user-select: none;
 }
 
+/* ─── Flags Table ────────────────────────────────────────────── */
+.flags-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-size: 0.9rem;
+}
+
+.flags-table th {
+  background: var(--bg);
+  color: var(--cyan);
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--cyan);
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.flags-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--subtle);
+  vertical-align: top;
+  color: var(--body);
+}
+
+.flags-table tr:last-child td {
+  border-bottom: none;
+}
+
+.flags-table tr:hover td {
+  background: var(--bg);
+}
+
+.flags-table td code {
+  color: var(--orange);
+  font-family: monospace;
+}
+
 /* ─── Usage Section ──────────────────────────────────────────── */
 #usage,
 .usage-section {
