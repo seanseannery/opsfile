@@ -33,6 +33,10 @@ cleanup() {
   if [ "$NPM_INSTALLED" = true ]; then
     npm uninstall -g opsfile 2>/dev/null && echo "  npm uninstall: done" || echo "  npm uninstall: skipped"
   fi
+  if [ -f "$HOME/.opsfile/ops" ]; then
+    rm -f "$HOME/.opsfile/ops"
+    echo "  shim cache removed"
+  fi
 }
 trap cleanup EXIT
 
@@ -63,7 +67,8 @@ echo "=== npm install test ==="
 if ! command -v npm > /dev/null 2>&1; then
   echo "  SKIP: npm not found"
 else
-  if npm install -g github:seanseannery/opsfile --no-fund --no-audit 2>&1; then
+  REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if npm install -g "$REPO_ROOT" --no-fund --no-audit 2>&1; then
     NPM_INSTALLED=true
     NPM_OPS="$(npm config get prefix)/bin/ops"
     if "$NPM_OPS" --version > /dev/null 2>&1; then
@@ -72,7 +77,7 @@ else
       fail "ops installed via npm but --version failed"
     fi
   else
-    fail "npm install github:seanseannery/opsfile failed"
+    fail "npm install (local) failed"
   fi
 fi
 
