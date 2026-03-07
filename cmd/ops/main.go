@@ -17,7 +17,7 @@ const opsFileName string = "Opsfile"
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
-	flags, positionals, err := internal.ParseOpsFlags(os.Args[1:])
+	flags, positionals, err := internal.ParseOpsFlags(os.Args[1:], nil)
 	if errors.Is(err, internal.ErrHelp) {
 		os.Exit(0)
 	}

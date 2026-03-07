@@ -1,10 +1,12 @@
 package internal
 
 import (
+	"bytes"
 	"io"
-	"os"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseOpsFlags(t *testing.T) {
@@ -133,79 +135,39 @@ func TestParseOpsFlags(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotFlags, gotPos, err := ParseOpsFlags(tc.input)
+			gotFlags, gotPos, err := ParseOpsFlags(tc.input, io.Discard)
 
 			if tc.wantErr != nil {
-				if err != tc.wantErr {
-					t.Fatalf("error: got %v, want %v", err, tc.wantErr)
-				}
+				require.ErrorIs(t, err, tc.wantErr)
 				return
 			}
 			if tc.wantErrSub != "" {
-				if err == nil {
-					t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)
-				}
-				if !strings.Contains(err.Error(), tc.wantErrSub) {
-					t.Errorf("error %q does not contain %q", err.Error(), tc.wantErrSub)
-				}
+				require.Error(t, err)
+				assert.ErrorContains(t, err, tc.wantErrSub)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if gotFlags != tc.wantFlags {
-				t.Errorf("OpsFlags: got %+v, want %+v", gotFlags, tc.wantFlags)
-			}
-			if len(gotPos) != len(tc.wantPos) {
-				t.Fatalf("positionals: got %v, want %v", gotPos, tc.wantPos)
-			}
-			for i, w := range tc.wantPos {
-				if gotPos[i] != w {
-					t.Errorf("positionals[%d]: got %q, want %q", i, gotPos[i], w)
-				}
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantFlags, gotFlags)
+			assert.Equal(t, tc.wantPos, gotPos)
 		})
 	}
 }
 
 func TestParseOpsFlags_HelpOutput(t *testing.T) {
-	// Capture stderr from -h to verify usage text is printed.
-	origStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = w
+	var buf bytes.Buffer
+	_, _, gotErr := ParseOpsFlags([]string{"-h"}, &buf)
 
-	_, _, gotErr := ParseOpsFlags([]string{"-h"})
+	require.ErrorIs(t, gotErr, ErrHelp)
 
-	w.Close()
-	os.Stderr = origStderr
-
-	captured, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	output := string(captured)
-
-	if gotErr != ErrHelp {
-		t.Fatalf("expected ErrHelp, got %v", gotErr)
-	}
-
+	output := buf.String()
 	for _, want := range []string{"-D", "-d", "-s", "-v"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("help output does not contain %q", want)
-		}
+		assert.Contains(t, output, want)
 	}
 
 	// Verify unknown flag error includes the flag name.
-	_, _, unknownErr := ParseOpsFlags([]string{"--foobar"})
-	if unknownErr == nil {
-		t.Fatal("expected error for --foobar, got nil")
-	}
-	if !strings.Contains(unknownErr.Error(), "foobar") {
-		t.Errorf("error %q does not mention the unknown flag name 'foobar'", unknownErr.Error())
-	}
+	_, _, unknownErr := ParseOpsFlags([]string{"--foobar"}, &buf)
+	require.Error(t, unknownErr)
+	assert.ErrorContains(t, unknownErr, "foobar")
 }
 
 func TestParseOpsArgs(t *testing.T) {
@@ -270,34 +232,17 @@ func TestParseOpsArgs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ParseOpsArgs(tc.input)
 			if tc.wantErrSub != "" {
-				if err == nil {
-					t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)
-				}
-				if !strings.Contains(err.Error(), tc.wantErrSub) {
-					t.Errorf("error %q does not contain %q", err.Error(), tc.wantErrSub)
-				}
+				require.Error(t, err)
+				assert.ErrorContains(t, err, tc.wantErrSub)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.OpsEnv != tc.wantEnv {
-				t.Errorf("OpsEnv: got %q, want %q", got.OpsEnv, tc.wantEnv)
-			}
-			if got.OpsCommand != tc.wantCmd {
-				t.Errorf("OpsCommand: got %q, want %q", got.OpsCommand, tc.wantCmd)
-			}
-			if len(tc.wantArgs) == 0 && len(got.CommandArgs) == 0 {
-				return
-			}
-			if len(got.CommandArgs) != len(tc.wantArgs) {
-				t.Errorf("CommandArgs: got %v, want %v", got.CommandArgs, tc.wantArgs)
-				return
-			}
-			for i, a := range tc.wantArgs {
-				if got.CommandArgs[i] != a {
-					t.Errorf("CommandArgs[%d]: got %q, want %q", i, got.CommandArgs[i], a)
-				}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantEnv, got.OpsEnv)
+			assert.Equal(t, tc.wantCmd, got.OpsCommand)
+			if len(tc.wantArgs) == 0 {
+				assert.Empty(t, got.CommandArgs)
+			} else {
+				assert.Equal(t, tc.wantArgs, got.CommandArgs)
 			}
 		})
 	}
