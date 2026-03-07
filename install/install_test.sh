@@ -24,7 +24,7 @@ cleanup() {
     echo "  curl tmp dir removed"
   fi
   if [ "$BREW_INSTALLED" = true ]; then
-    brew uninstall opsfile 2>/dev/null && echo "  brew uninstall: done" || echo "  brew uninstall: skipped"
+    brew uninstall seanseannery/opsfile/opsfile 2>/dev/null && echo "  brew uninstall: done" || echo "  brew uninstall: skipped"
   fi
   if [ "$BREW_TAPPED" = true ]; then
     brew untap seanseannery/opsfile 2>/dev/null && echo "  brew untap: done" || echo "  brew untap: skipped"
@@ -60,7 +60,7 @@ if ! command -v brew > /dev/null 2>&1; then
 else
   if brew tap seanseannery/opsfile https://github.com/seanseannery/opsfile; then
     BREW_TAPPED=true
-    if brew install seanseannery/opsfile; then
+    if brew install seanseannery/opsfile/opsfile; then
       BREW_INSTALLED=true
       BREW_OPS="$(brew --prefix)/bin/ops"
       if "$BREW_OPS" --version > /dev/null 2>&1; then

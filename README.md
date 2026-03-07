@@ -10,9 +10,9 @@
 
   ```bash
   brew tap seanseannery/opsfile https://github.com/seanseannery/opsfile
-  brew install seanseannery/opsfile
+  brew install seanseannery/opsfile/opsfile
   ```
-  After tapping, `brew upgrade seanseannery/opsfile` keeps `ops` up to date.
+  After tapping, `brew upgrade seanseannery/opsfile/opsfile` keeps `ops` up to date.
 
   ### curl (MacOS / Linux)
 
