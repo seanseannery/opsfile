@@ -33,6 +33,10 @@ cleanup() {
   if [ "$NPM_INSTALLED" = true ]; then
     npm uninstall -g opsfile 2>/dev/null && echo "  npm uninstall: done" || echo "  npm uninstall: skipped"
   fi
+  if [ -f "$HOME/.opsfile/ops" ]; then
+    rm -f "$HOME/.opsfile/ops"
+    echo "  shim cache removed"
+  fi
 }
 trap cleanup EXIT
 
@@ -52,6 +56,37 @@ if INSTALL_DIR="$CURL_TMP_DIR" bash "$SCRIPT_DIR/install.sh"; then
   fi
 else
   fail "curl install script exited non-zero"
+fi
+
+# ── npm install test ─────────────────────────────────────────────────────────
+# Run before brew so both don't try to link to the same bin path (e.g. /opt/homebrew/bin/ops)
+
+echo ""
+echo "=== npm install test ==="
+
+if ! command -v npm > /dev/null 2>&1; then
+  echo "  SKIP: npm not found"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if npm install -g "$REPO_ROOT" --no-fund --no-audit 2>&1; then
+    NPM_INSTALLED=true
+    NPM_OPS="$(npm config get prefix)/bin/ops"
+    if "$NPM_OPS" --version > /dev/null 2>&1; then
+      pass "ops installed via npm and responds to --version"
+    else
+      fail "ops installed via npm but --version failed"
+    fi
+  else
+    fail "npm install (local) failed"
+  fi
+fi
+
+# ── cleanup between npm and brew ─────────────────────────────────────────────
+# Both npm and brew link ops to the same bin path (e.g. /opt/homebrew/bin/ops).
+# Uninstall npm before brew to avoid EEXIST conflicts.
+
+if [ "$NPM_INSTALLED" = true ]; then
+  npm uninstall -g opsfile 2>/dev/null && NPM_INSTALLED=false || true
 fi
 
 # ── brew install test ─────────────────────────────────────────────────────────
@@ -77,27 +112,6 @@ else
     fi
   else
     fail "brew tap seanseannery/opsfile failed"
-  fi
-fi
-
-# ── npm install test ─────────────────────────────────────────────────────────
-
-echo ""
-echo "=== npm install test ==="
-
-if ! command -v npm > /dev/null 2>&1; then
-  echo "  SKIP: npm not found"
-else
-  if npm install -g github:seanseannery/opsfile --no-fund --no-audit 2>&1; then
-    NPM_INSTALLED=true
-    NPM_OPS="$(npm config get prefix)/bin/ops"
-    if "$NPM_OPS" --version > /dev/null 2>&1; then
-      pass "ops installed via npm and responds to --version"
-    else
-      fail "ops installed via npm but --version failed"
-    fi
-  else
-    fail "npm install github:seanseannery/opsfile failed"
   fi
 fi
 

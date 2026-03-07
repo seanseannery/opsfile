@@ -1,26 +1,30 @@
 #!/usr/bin/env node
 'use strict';
 
+// ops npm shim — downloads the platform binary on first use and forwards all args to it.
+
+const { execFileSync } = require('child_process');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const REPO = 'seanseannery/opsfile';
-const BIN_DIR = path.join(__dirname, '..', 'bin');
-const BIN_PATH = path.join(BIN_DIR, 'ops');
+const CACHE_DIR = path.join(os.homedir(), '.opsfile');
+const BIN_PATH = path.join(CACHE_DIR, 'ops');
 
 function platformAssetPrefix() {
   switch (process.platform) {
     case 'darwin': return 'ops_darwin_v';
     case 'linux':  return 'ops_unix_v';
     default:
-      console.error(`Unsupported platform: ${process.platform}`);
+      console.error(`ops: unsupported platform: ${process.platform}`);
       process.exit(1);
   }
 }
 
 function get(url) {
-  const headers = { 'User-Agent': 'opsfile-npm-installer' };
+  const headers = { 'User-Agent': 'opsfile-npm-shim' };
   if (process.env.GITHUB_TOKEN) {
     headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
@@ -37,35 +41,37 @@ function get(url) {
   });
 }
 
-async function main() {
+async function download() {
   const prefix = platformAssetPrefix();
-
-  console.log(`Fetching latest release from github.com/${REPO} ...`);
   const apiData = await get(`https://api.github.com/repos/${REPO}/releases/latest`);
   const release = JSON.parse(apiData.toString());
 
-  if (release.message) {
-    throw new Error(`GitHub API error: ${release.message}`);
-  }
-  if (!release.assets) {
-    throw new Error('GitHub API response missing assets — no published release found');
-  }
+  if (release.message) throw new Error(`GitHub API error: ${release.message}`);
+  if (!release.assets) throw new Error('GitHub API response missing assets — no published release found');
 
   const asset = release.assets.find(a => a.name.startsWith(prefix));
-  if (!asset) {
-    console.error(`No release asset found matching '${prefix}'`);
-    process.exit(1);
-  }
+  if (!asset) throw new Error(`No release asset found matching '${prefix}'`);
 
-  console.log(`Downloading ops ${release.tag_name} for ${process.platform} ...`);
+  process.stderr.write(`ops: downloading ${release.tag_name} for ${process.platform}...\n`);
   const binary = await get(asset.browser_download_url);
 
-  fs.mkdirSync(BIN_DIR, { recursive: true });
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
   fs.writeFileSync(BIN_PATH, binary, { mode: 0o755 });
-  console.log(`Installed ops ${release.tag_name}`);
+}
+
+async function main() {
+  if (!fs.existsSync(BIN_PATH)) {
+    await download();
+  }
+
+  try {
+    execFileSync(BIN_PATH, process.argv.slice(2), { stdio: 'inherit' });
+  } catch (e) {
+    process.exit(e.status ?? 1);
+  }
 }
 
 main().catch(err => {
-  console.error('Install failed:', err.message);
+  console.error('ops:', err.message);
   process.exit(1);
 });
