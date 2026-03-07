@@ -343,11 +343,13 @@ pre > code {
   color: var(--bright);
   border: none;
   border-radius: 4px;
-  padding: 4px 10px;
-  font-family: monospace;
-  font-size: 0.75rem;
+  padding: 5px 8px;
+  line-height: 1;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .copy-btn:hover {
