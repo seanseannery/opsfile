@@ -1,0 +1,21 @@
+{
+  "name": "opsfile",
+  "version": "0.8.1",
+  "description": "Like make/Makefile but for live operations commands",
+  "homepage": "https://github.com/seanseannery/opsfile",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seanseannery/opsfile.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "ops": "bin/ops"
+  },
+  "scripts": {
+    "postinstall": "node install/npm_install.js"
+  },
+  "os": ["darwin", "linux"],
+  "engines": {
+    "node": ">=14"
+  }
+}

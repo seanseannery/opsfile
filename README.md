@@ -14,6 +14,13 @@
   ```
   After tapping, `brew upgrade seanseannery/opsfile/opsfile` keeps `ops` up to date.
 
+  ### npm (MacOS / Linux)
+
+  ```bash
+  npm install -g github:seanseannery/opsfile
+  ```
+  Requires Node.js ≥ 14. Downloads the correct platform binary from the latest GitHub release on install.
+
   ### curl (MacOS / Linux)
 
   ```bash
