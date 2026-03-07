@@ -1,5 +1,7 @@
 # opsfile (aka `ops`)
 
+> **Website:** [seanseannery.github.io/opsfile](https://seanseannery.github.io/opsfile)
+
 ## What does `ops` do?
 
   It's a cli tool, essentially like `make` and `makefiles` but for sharing and executing live-operations / on-call commands for the repo.  Simply create an `Opsfile` in your repo with common on-call commands your team uses and run it with `ops [env] <command>`.
