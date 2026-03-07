@@ -111,6 +111,14 @@ a:hover {
   margin-bottom: 8px;
 }
 
+.tagline code {
+  font-family: monospace;
+  color: var(--cyan);
+  background: var(--bg-hl);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
 .subtitle {
   color: var(--muted);
   font-size: 1rem;
@@ -312,6 +320,57 @@ pre > code {
   color: var(--bright);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* ─── Copy Button ────────────────────────────────────────────── */
+.code-block {
+  position: relative;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--subtle);
+  color: var(--bright);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.copy-btn:hover {
+  background: var(--cyan);
+  color: var(--bg);
+}
+
+/* ─── Opsfile Syntax Highlighting ────────────────────────────── */
+.sh-comment { color: var(--subtle); font-style: italic; }
+.sh-varname  { color: var(--blue); }
+.sh-val      { color: var(--yellow); }
+.sh-cmd      { color: var(--cyan); font-weight: bold; }
+.sh-env      { color: var(--green); }
+.sh-subst    { color: var(--orange); }
+
+/* ─── Bash Example Block ─────────────────────────────────────── */
+.bash-example {
+  background: var(--bg-hl);
+  border-radius: 4px;
+  padding: 16px 20px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.8;
+  margin: 16px 0;
+  border-left: 3px solid var(--green);
+  color: var(--bright);
+}
+
+.bash-example .prompt {
+  color: var(--green);
+  user-select: none;
 }
 
 /* ─── Usage Section ──────────────────────────────────────────── */

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="ops — like make, but for live operations commands">
-  <title>ops — live operations CLI</title>
+  <title>Opsfile — live operations CLI</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
   <!-- HEADER -->
   <header class="site-header">
     <div class="container">
-      <span class="logo">ops</span>
+      <span class="logo">Opsfile</span>
       <nav class="site-nav">
         <a href="#install">Install</a>
         <a href="#usage">Usage</a>
@@ -24,8 +24,8 @@
   <!-- HERO -->
   <section class="hero">
     <div class="container">
-      <h1>ops</h1>
-      <p class="tagline">like make, but for live operations</p>
+      <h1>Opsfile</h1>
+      <p class="tagline">Like <code>make</code>, but for common live ops commands</p>
       <p class="subtitle">Create an Opsfile. Run ops [env] [command]. Done.</p>
       <div class="cta-buttons">
         <a href="#install" class="btn-primary">Install</a>
@@ -91,35 +91,34 @@ brew install seanseannery/opsfile/opsfile</code></pre>
       <h3>Step 1: Create an Opsfile</h3>
       <p>Create an <code>Opsfile</code> in your repo root. It uses Makefile-style syntax:</p>
       <div class="opsfile-example code-block">
-        <pre><code># Variables — prefix with environment name to scope them
-prod_AWS_ACCOUNT=1234567
-preprod_AWS_ACCOUNT=8765431
+        <pre><code><span class="sh-comment"># Variables — prefix with environment name to scope them</span>
+<span class="sh-varname">prod_AWS_ACCOUNT</span>=<span class="sh-val">1234567</span>
+<span class="sh-varname">preprod_AWS_ACCOUNT</span>=<span class="sh-val">8765431</span>
 
-# Commands — define per-environment shell lines
-# Use "default" as a fallback when env-specific block is absent
-tail-logs:
-    default:
-        aws cloudwatch logs --tail $(AWS_ACCOUNT)
-    local:
+<span class="sh-comment"># Commands — define per-environment shell lines</span>
+<span class="sh-comment"># Use "default" as a fallback when env-specific block is absent</span>
+<span class="sh-cmd">tail-logs</span>:
+    <span class="sh-env">default</span>:
+        aws cloudwatch logs --tail <span class="sh-subst">$(AWS_ACCOUNT)</span>
+    <span class="sh-env">local</span>:
         docker logs myapp --follow
 
-list-instance-ips:
-    prod:
+<span class="sh-cmd">list-instance-ips</span>:
+    <span class="sh-env">prod</span>:
         aws ec2 --list-instances
-    preprod:
+    <span class="sh-env">preprod</span>:
         aws ecs cluster --list-instances
 
-# Shell environment variables are injected automatically using the same $(VAR) syntax.
-# No declaration needed — if ops can't find it in the Opsfile, it falls back to env variables
-show-profile:
-    default:
-        echo "Using AWS profile: $(AWS_PROFILE)"</code></pre>
+<span class="sh-comment"># Shell env vars are injected automatically — ops falls back to env if not in Opsfile</span>
+<span class="sh-cmd">show-profile</span>:
+    <span class="sh-env">default</span>:
+        echo "Using AWS profile: <span class="sh-subst">$(AWS_PROFILE)</span>"</code></pre>
       </div>
 
       <h3>Step 2: Run ops commands</h3>
       <p>Run commands with the following syntax:</p>
-      <div class="code-block">
-        <pre><code>ops [flags] &lt;your_environment&gt; &lt;your_command&gt; [any-command-args]</code></pre>
+      <div class="bash-example">
+        <span class="prompt">$</span> ops [flags] &lt;environment&gt; &lt;command&gt; [args]
       </div>
 
       <table>
@@ -140,11 +139,11 @@ show-profile:
       </table>
 
       <h4>Examples:</h4>
-      <div class="code-block">
-        <pre><code>ops preprod instance-count
-ops prod open-dashboard
-ops local logs
-ops prod k8s -namespace myspace</code></pre>
+      <div class="bash-example">
+        <div><span class="prompt">$</span> ops preprod instance-count</div>
+        <div><span class="prompt">$</span> ops prod open-dashboard</div>
+        <div><span class="prompt">$</span> ops local logs</div>
+        <div><span class="prompt">$</span> ops prod k8s -namespace myspace</div>
       </div>
     </div>
   </section>
@@ -207,6 +206,7 @@ ops prod k8s -namespace myspace</code></pre>
   </footer>
 
   <script>
+    // Tab switcher
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -216,6 +216,21 @@ ops prod k8s -namespace myspace</code></pre>
       });
     });
     document.querySelector('.tab-btn').click();
+
+    // Copy buttons on install code blocks
+    document.querySelectorAll('.install-section .code-block').forEach(block => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', () => {
+        const code = block.querySelector('code');
+        navigator.clipboard.writeText(code.textContent.trim()).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+        });
+      });
+      block.appendChild(btn);
+    });
   </script>
 
 </body>
