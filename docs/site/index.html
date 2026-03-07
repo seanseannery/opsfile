@@ -12,7 +12,7 @@
   <!-- HEADER -->
   <header class="site-header">
     <div class="container">
-      <span class="logo">Opsfile</span>
+      <span class="logo">&gt;_ 🚨 Opsfile</span>
       <nav class="site-nav">
         <a href="#install">Install</a>
         <a href="#usage">Usage</a>
@@ -26,7 +26,7 @@
     <div class="container">
       <h1>Opsfile</h1>
       <p class="tagline">Like <code>make</code>, but for common live ops commands</p>
-      <p class="subtitle">Create an Opsfile. Run ops [env] [command]. Done.</p>
+      <p class="subtitle">Create an Opsfile. Run <code>ops prod rollback-cluster</code>. Go back to sleep.</p>
       <div class="cta-buttons">
         <a href="#install" class="btn-primary">Install</a>
         <a href="https://github.com/seanseannery/opsfile" class="btn-secondary">View on GitHub</a>
@@ -176,12 +176,12 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         <div class="feature-card">
           <div class="feature-icon">🤝</div>
           <div class="feature-title">Team Standardisation</div>
-          <p>No more tribal knowledge or Slack threads of bash one-liners. Opsfile lives in the repo — every teammate runs the same command, the same way, every time.</p>
+          <p>No more tribal knowledge or bespoke bash aliases. Opsfile lives in the repo.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">🔒</div>
           <div class="feature-title">Secrets-Safe by Design</div>
-          <p>Reference secrets via environment variables — never commit credentials. Variables resolve from your shell at runtime, keeping sensitive values out of your repo.</p>
+          <p>Reference secrets via environment variables — never commit them.</p>
         </div>
       </div>
     </div>
@@ -193,19 +193,19 @@ brew install seanseannery/opsfile/opsfile</code></pre>
       <h2>Links</h2>
       <div class="links-grid">
         <a href="https://github.com/seanseannery/opsfile" class="link-card">
-          <strong>GitHub Repo</strong>
+          <strong>GitHub Repo:</strong>
           <span>Source code and documentation</span>
         </a>
         <a href="https://github.com/seanseannery/opsfile/releases" class="link-card">
-          <strong>Releases</strong>
+          <strong>Releases:</strong>
           <span>Download binaries and changelogs</span>
         </a>
         <a href="https://github.com/seanseannery/opsfile/issues" class="link-card">
-          <strong>Issues</strong>
+          <strong>Issues:</strong>
           <span>Bug reports and feature requests</span>
         </a>
         <a href="https://github.com/seanseannery/opsfile/discussions" class="link-card">
-          <strong>Discussions</strong>
+          <strong>Discussions:</strong>
           <span>Questions, ideas, and community</span>
         </a>
       </div>
@@ -234,13 +234,17 @@ brew install seanseannery/opsfile/opsfile</code></pre>
     // Copy buttons on install code blocks
     document.querySelectorAll('.install-section .code-block').forEach(block => {
       const btn = document.createElement('button');
+      const copyIcon = `<svg aria-hidden="true" height="14" viewBox="0 0 16 16" width="14" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>`;
+      const checkIcon = `<svg aria-hidden="true" height="14" viewBox="0 0 16 16" width="14" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>`;
       btn.className = 'copy-btn';
-      btn.textContent = 'Copy';
+      btn.innerHTML = copyIcon;
+      btn.title = 'Copy';
+      btn.setAttribute('aria-label', 'Copy');
       btn.addEventListener('click', () => {
         const code = block.querySelector('code');
         navigator.clipboard.writeText(code.textContent.trim()).then(() => {
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+          btn.innerHTML = checkIcon;
+          setTimeout(() => { btn.innerHTML = copyIcon; }, 2000);
         });
       });
       block.appendChild(btn);
