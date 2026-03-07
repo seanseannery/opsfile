@@ -37,7 +37,8 @@ type parser struct {
 	currentCommand  string
 	currentEnv      string
 	continuationBuf string // accumulated fragments from backslash-continuation lines
-	lastShellIndent int    // leading-whitespace count of last new shell line; -1 = none yet
+	seenShellLine   bool   // true once the first shell line in the current env has been recorded
+	lastShellIndent int    // leading-whitespace count of the last new shell line
 	lineNum         int    // current 1-based line number, for error messages
 }
 
@@ -51,9 +52,8 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 	defer f.Close()
 
 	p := &parser{
-		variables:       make(OpsVariables),
-		commands:        make(map[string]*OpsCommand),
-		lastShellIndent: -1,
+		variables: make(OpsVariables),
+		commands:  make(map[string]*OpsCommand),
 	}
 
 	scanner := bufio.NewScanner(f)
@@ -102,6 +102,8 @@ func (p *parser) processLine(raw string) error {
 		return p.handleInCommand(line)
 	case inEnvironment:
 		p.handleInEnvironment(line, leadingWhitespace(raw))
+	default:
+		// unknown state — no-op
 	}
 	return nil
 }
@@ -137,29 +139,31 @@ func (p *parser) handleInEnvironment(line string, rawIndent int) {
 		// Final line of a backslash-continuation chain.
 		p.appendShellLine(p.continuationBuf + line)
 		p.continuationBuf = ""
+		p.seenShellLine = true
 		p.lastShellIndent = rawIndent
 
-	case p.lastShellIndent >= 0 && rawIndent > p.lastShellIndent:
+	case p.seenShellLine && rawIndent > p.lastShellIndent:
 		// Indent-based continuation: join to the previous shell line with a space.
 		p.joinLastShellLine(" " + line)
 
 	default:
 		// Regular new shell line.
 		p.appendShellLine(line)
+		p.seenShellLine = true
 		p.lastShellIndent = rawIndent
 	}
 }
 
 func (p *parser) parseVariable(line string) error {
-	parts := strings.SplitN(line, "=", 2)
-	if len(parts) != 2 {
+	name, rawVal, ok := strings.Cut(line, "=")
+	if !ok {
 		return nil
 	}
-	name := strings.TrimSpace(parts[0])
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("variable assignment missing name")
 	}
-	value, err := extractVariableValue(strings.TrimSpace(parts[1]))
+	value, err := extractVariableValue(strings.TrimSpace(rawVal))
 	if err != nil {
 		return err
 	}
@@ -221,7 +225,7 @@ func (p *parser) startEnv(name string) {
 	if _, exists := cmd.Environments[name]; !exists {
 		cmd.Environments[name] = []string{}
 	}
-	p.lastShellIndent = -1
+	p.seenShellLine = false
 	p.state = inEnvironment
 }
 
@@ -268,15 +272,7 @@ func isEnvHeader(line string) bool {
 // isIdentifier reports whether s is a bare identifier (letters, digits, hyphens, underscores).
 // Used to distinguish environment headers from shell lines that happen to end with ":".
 func isIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if !isIdentChar(c) {
-			return false
-		}
-	}
-	return true
+	return s != "" && strings.IndexFunc(s, func(r rune) bool { return !isIdentChar(r) }) == -1
 }
 
 func isIdentChar(c rune) bool {
