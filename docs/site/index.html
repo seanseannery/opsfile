@@ -99,15 +99,15 @@ brew install seanseannery/opsfile/opsfile</code></pre>
 <span class="sh-comment"># Use "default" as a fallback when env-specific block is absent</span>
 <span class="sh-cmd">tail-logs</span>:
     <span class="sh-env">default</span>:
-        aws cloudwatch logs --tail <span class="sh-subst">$(AWS_ACCOUNT)</span>
+        aws logs tail /aws/ecs/my-service --follow --since 30m
     <span class="sh-env">local</span>:
-        docker logs myapp --follow
+        docker logs myapp --follow --tail 100
 
 <span class="sh-cmd">list-instance-ips</span>:
     <span class="sh-env">prod</span>:
-        aws ec2 --list-instances
+        aws ec2 describe-instances --filters "Name=tag:Env,Values=prod" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text
     <span class="sh-env">preprod</span>:
-        aws ecs cluster --list-instances
+        aws ecs list-container-instances --cluster my-cluster-preprod --output text
 
 <span class="sh-comment"># Shell env vars are injected automatically — ops falls back to env if not in Opsfile</span>
 <span class="sh-cmd">show-profile</span>:
