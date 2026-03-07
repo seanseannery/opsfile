@@ -62,13 +62,14 @@
   ### Contributing Code and Features
 
   Must Read (if you havent already) and adhere to `CONTRIBUTING.md` for style, design choices, and code contribution guidelines. High priority contribution guidelines include: 
-    - Prefer readability over micro-optimization: clear code is more important than saving microseconds
-    - Prefer standard library functions and utilities over reimplementing the wheel yourself, the standard library is extensive.
-    - Only use external dependencies if it improves code simplicity/security and has a very active community, otherwise prefer the standard library
-    - Follow [Google Go Style Decisions](https://google.github.io/styleguide/go/decisions) to the best of your effort
-    - Follow trunk-based development flow, using feature branches and conventional commit standards for commit and pr title naming
-      - **Commits** — use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`. Subject line under 72 characters, imperative mood.
-      - Before committing, check the current branch name and verify it is scoped to the work being committed. If the current branch is `main` or is focused on a different feature/topic than the changes being committed, create a new appropriately-named branch first (following the naming conventions in CONTRIBUTING.md) before committing. New branches must always be created off of `main` unless the user explicitly instructs otherwise.
+  
+  - Prefer readability over micro-optimization: clear code is more important than saving microseconds
+  - Prefer standard library functions and utilities over reimplementing the wheel yourself, the standard library is extensive.
+  - Only use external dependencies if it improves code simplicity/security and has a very active community, otherwise prefer the standard library
+  - Follow [Google Go Style Decisions](https://google.github.io/styleguide/go/decisions) to the best of your effort
+  - Follow trunk-based development flow, using feature branches and conventional commit standards for commit and pr title naming
+    - **Commits** — use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`. Subject line under 72 characters, imperative mood.
+    - Before committing, check the current branch name and verify it is scoped to the work being committed. If the current branch is `main` or is focused on a different feature/topic than the changes being committed, create a new appropriately-named branch first (following the naming conventions in CONTRIBUTING.md) before committing. New branches must always be created off of `main` unless the user explicitly instructs otherwise.
 
 
   ### Must Do
