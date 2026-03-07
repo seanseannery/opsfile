@@ -30,6 +30,7 @@
     ├────── workflows/        GitHub Actions workflows definitions (release, PR checks) and cliff.toml changelog config
     ├── .githooks/            Local git hooks: pre-push (lint+test), commit-msg (conventional commit format)
     │
+    ├── Formula/              Homebrew tap formula — auto-updated by release.yml on each release
     ├── go.mod                Module declaration (sean_seannery/opsfile, Go 1.25+, no external deps)
     ├── AGENTS.md             This file — source of truth for agentic context
     ├── CLAUDE.md             Links to AGENTS.md (Claude does not natively support AGENTS.md)

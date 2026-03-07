@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="seanseannery/opsfile"
 BINARY="ops"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # ── OS detection ────────────────────────────────────────────────────────────
 

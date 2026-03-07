@@ -25,6 +25,8 @@ jobs:
           go-version-file: go.mod
       - name: Run tests
         run: make test
+      - name: Run install smoke tests
+        run: make test-install
 
   release:
     name: Release
@@ -86,3 +88,14 @@ jobs:
           name: ${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.content }}
           files: bin/ops_*
+
+      - name: Update Homebrew formula
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          URL="https://github.com/seanseannery/opsfile/archive/refs/tags/${VERSION}.tar.gz"
+          SHA256=$(curl -fsSL "${URL}" | sha256sum | awk '{print $1}')
+          sed -i "s|url \".*\"|url \"${URL}\"|" Formula/opsfile.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/opsfile.rb
+          git add Formula/opsfile.rb
+          git commit -m "chore: update Homebrew formula to ${VERSION}"
+          git push origin main
