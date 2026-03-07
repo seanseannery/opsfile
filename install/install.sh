@@ -22,8 +22,13 @@ esac
 
 echo "Fetching latest release from github.com/$REPO ..."
 
+API_ARGS=(-fsSL "https://api.github.com/repos/$REPO/releases/latest")
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  API_ARGS+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+fi
+
 DOWNLOAD_URL="$(
-  curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+  curl "${API_ARGS[@]}" \
   | grep "browser_download_url" \
   | grep "$ASSET" \
   | sed 's/.*"browser_download_url": "\(.*\)"/\1/'

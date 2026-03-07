@@ -20,8 +20,12 @@ function platformAssetPrefix() {
 }
 
 function get(url) {
+  const headers = { 'User-Agent': 'opsfile-npm-installer' };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'opsfile-npm-installer' } }, (res) => {
+    https.get(url, { headers }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         return get(res.headers.location).then(resolve).catch(reject);
       }
@@ -39,6 +43,13 @@ async function main() {
   console.log(`Fetching latest release from github.com/${REPO} ...`);
   const apiData = await get(`https://api.github.com/repos/${REPO}/releases/latest`);
   const release = JSON.parse(apiData.toString());
+
+  if (release.message) {
+    throw new Error(`GitHub API error: ${release.message}`);
+  }
+  if (!release.assets) {
+    throw new Error('GitHub API response missing assets — no published release found');
+  }
 
   const asset = release.assets.find(a => a.name.startsWith(prefix));
   if (!asset) {
