@@ -1,0 +1,433 @@
+/* Solarized Dark — GitHub Pages stylesheet for ops CLI */
+
+/* ─── Color Palette ─────────────────────────────────────────── */
+:root {
+  --bg:       #002b36;  /* base03 - page background */
+  --bg-hl:    #073642;  /* base02 - card/code backgrounds */
+  --bg-hl2:   #0a4050;  /* slightly lighter, hover states */
+  --subtle:   #586e75;  /* base01 - borders, muted text */
+  --muted:    #657b83;  /* base00 */
+  --body:     #839496;  /* base0 - body text */
+  --emphasis: #93a1a1;  /* base1 - headings, emphasis */
+  --bright:   #fdf6e3;  /* base3 - high contrast text */
+  --yellow:   #b58900;
+  --orange:   #cb4b16;
+  --red:      #dc322f;
+  --cyan:     #2aa198;
+  --blue:     #268bd2;
+  --green:    #859900;
+}
+
+/* ─── Global ─────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--body);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+.site-header {
+  background: var(--bg-hl);
+  border-bottom: 1px solid var(--subtle);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 14px 0;
+}
+
+.site-header .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-weight: bold;
+  font-size: 1.4rem;
+  color: var(--cyan);
+  font-family: monospace;
+  letter-spacing: -1px;
+  text-decoration: none;
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.site-nav a {
+  color: var(--body);
+  margin-left: 20px;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+/* ─── Hero ───────────────────────────────────────────────────── */
+.hero {
+  padding: 80px 0 60px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 4rem;
+  color: var(--cyan);
+  font-family: monospace;
+  margin-bottom: 8px;
+  margin-top: 0;
+}
+
+.tagline {
+  font-size: 1.4rem;
+  color: var(--emphasis);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 1rem;
+  margin-bottom: 32px;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-primary,
+.btn-secondary {
+  display: inline-block;
+  padding: 10px 24px;
+  border-radius: 4px;
+  font-family: monospace;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.btn-primary {
+  background: var(--cyan);
+  color: var(--bg);
+  font-weight: bold;
+  border: none;
+}
+
+.btn-primary:hover {
+  background: var(--blue);
+  text-decoration: none;
+  color: var(--bg);
+}
+
+.btn-secondary {
+  border: 2px solid var(--subtle);
+  color: var(--emphasis);
+  background: none;
+}
+
+.btn-secondary:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+/* ─── Terminal Demo ──────────────────────────────────────────── */
+#terminal-demo {
+  max-width: 640px;
+  margin: 40px auto;
+  background: var(--bg-hl);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.terminal-bar {
+  background: var(--subtle);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-dot:nth-child(1) { background: var(--red); }
+.terminal-dot:nth-child(2) { background: var(--yellow); }
+.terminal-dot:nth-child(3) { background: var(--green); }
+
+.terminal-body {
+  padding: 20px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.line {
+  opacity: 0;
+  animation: appear 0.3s ease forwards;
+}
+
+.line:nth-child(1) { animation-delay: 0.5s; }
+.line:nth-child(2) { animation-delay: 1.5s; }
+.line:nth-child(3) { animation-delay: 2.5s; }
+.line:nth-child(4) { animation-delay: 3.5s; }
+
+.prompt { color: var(--green); }
+.cmd    { color: var(--bright); }
+.out    { color: var(--muted); }
+
+.cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  background: var(--cyan);
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ─── Install Section ────────────────────────────────────────── */
+#install,
+.install-section {
+  padding: 64px 0;
+  background: var(--bg);
+}
+
+.install-section h2,
+#install h2 {
+  color: var(--emphasis);
+  margin-bottom: 32px;
+  font-family: monospace;
+}
+
+.install-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0;
+  border-bottom: 2px solid var(--bg-hl);
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 10px 20px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 1rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--emphasis);
+}
+
+.tab-btn.active {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.code-block {
+  background: var(--bg-hl);
+  border-radius: 0 4px 4px 4px;
+  padding: 20px;
+}
+
+pre > code {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--bright);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Usage Section ──────────────────────────────────────────── */
+#usage,
+.usage-section {
+  padding: 64px 0;
+  background: var(--bg-hl);
+}
+
+.usage-section h2,
+.usage-section h3,
+#usage h2,
+#usage h3 {
+  color: var(--emphasis);
+  font-family: monospace;
+}
+
+.opsfile-example {
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 20px;
+  border-left: 3px solid var(--cyan);
+}
+
+.opsfile-example code {
+  color: var(--body);
+  font-size: 0.85rem;
+}
+
+/* ─── Features Section ───────────────────────────────────────── */
+.features-section {
+  padding: 64px 0;
+  background: var(--bg);
+  text-align: center;
+}
+
+.features-section h2 {
+  color: var(--emphasis);
+  font-family: monospace;
+  margin-bottom: 40px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+}
+
+.feature-card {
+  background: var(--bg-hl);
+  border-radius: 6px;
+  padding: 24px;
+  border: 1px solid var(--subtle);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.feature-card:hover {
+  border-color: var(--cyan);
+  transform: translateY(-2px);
+}
+
+.feature-icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.feature-title {
+  color: var(--cyan);
+  font-family: monospace;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+/* ─── Links Section ──────────────────────────────────────────── */
+.links-section {
+  padding: 48px 0;
+  background: var(--bg-hl);
+  text-align: center;
+}
+
+.links-section h2 {
+  color: var(--emphasis);
+  font-family: monospace;
+  margin-bottom: 32px;
+}
+
+.links-grid {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.link-card {
+  background: var(--bg);
+  border: 1px solid var(--subtle);
+  border-radius: 6px;
+  padding: 20px 32px;
+  color: var(--blue);
+  font-family: monospace;
+  text-decoration: none;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.link-card:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────── */
+.site-footer {
+  background: var(--bg);
+  border-top: 1px solid var(--subtle);
+  padding: 24px 0;
+  text-align: center;
+  color: var(--subtle);
+  font-size: 0.85rem;
+}
+
+.site-footer a {
+  color: var(--subtle);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .hero h1 { font-size: 2.5rem; }
+  .cta-buttons { flex-direction: column; align-items: center; }
+  #terminal-demo { margin: 24px 0; font-size: 0.8rem; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .links-grid { flex-direction: column; align-items: center; }
+  .site-nav { display: none; }
+}
