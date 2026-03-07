@@ -98,10 +98,23 @@
     | `--directory <path>` | `-D <path>` | Use the Opsfile in the given directory instead of searching parent directories |
     | `--dry-run` | `-d` | Print the resolved commands without executing them |
     | `--silent` | `-s` | Execute commands without printing output |
+    | `--list` | `-l` | List available commands and environments defined in the Opsfile, then exit |
     | `--version` | `-v` | Print the ops version, commit, and build platform, then exit |
     | `--help` | `-?`, `-h` | Show usage information, then exit |
   
   #### Examples:
+  * `ops --list` - discover available commands and environments in the Opsfile:
+    ```
+    Commands Found in [./Opsfile]:
+
+    Environments:
+      default  local  preprod  prod
+
+    Commands:
+      show-profile       Using AWS profile
+      tail-logs          Tail CloudWatch logs
+      list-instance-ips  List the private IPs of running instances
+    ```
   * `ops preprod instance-count` - get the number of cloud instances in your preprod cluster
   * `ops prod open-dashboard` - open grafana/kibana/datadog/cloudwatch dashboard in your browser
   * `ops local logs` - tail logs for your local running docker environment to debug

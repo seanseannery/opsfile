@@ -20,7 +20,7 @@ func TestParseExamples_AllFilesParseWithoutError(t *testing.T) {
 
 	for _, path := range files {
 		t.Run(filepath.Base(path), func(t *testing.T) {
-			_, _, err := ParseOpsFile(path)
+			_, _, _, _, err := ParseOpsFile(path)
 			assert.NoError(t, err)
 		})
 	}
@@ -46,7 +46,7 @@ func examplesOpsfile(t *testing.T) string {
 }
 
 func TestParseOpsFile_Variables(t *testing.T) {
-	vars, _, err := ParseOpsFile(examplesOpsfile(t))
+	vars, _, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
 	cases := []struct{ name, want string }{
@@ -61,7 +61,7 @@ func TestParseOpsFile_Variables(t *testing.T) {
 }
 
 func TestParseOpsFile_NoComments(t *testing.T) {
-	vars, commands, err := ParseOpsFile(examplesOpsfile(t))
+	vars, commands, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
 	for k, v := range vars {
@@ -81,7 +81,7 @@ func TestParseOpsFile_NoComments(t *testing.T) {
 }
 
 func TestParseOpsFile_Commands(t *testing.T) {
-	_, commands, err := ParseOpsFile(examplesOpsfile(t))
+	_, commands, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
 	expectedCommands := []string{"tail-logs", "list-instance-ips", "show-profile"}
@@ -95,7 +95,7 @@ func TestParseOpsFile_Commands(t *testing.T) {
 }
 
 func TestParseOpsFile_TailLogsEnvironments(t *testing.T) {
-	_, commands, err := ParseOpsFile(examplesOpsfile(t))
+	_, commands, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
 	cmd, ok := commands["tail-logs"]
@@ -118,7 +118,7 @@ func TestParseOpsFile_TailLogsEnvironments(t *testing.T) {
 }
 
 func TestParseOpsFile_ListInstanceIpsEnvironments(t *testing.T) {
-	_, commands, err := ParseOpsFile(examplesOpsfile(t))
+	_, commands, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
 	cmd, ok := commands["list-instance-ips"]
@@ -137,7 +137,7 @@ func TestParseOpsFile_ListInstanceIpsEnvironments(t *testing.T) {
 }
 
 func TestParseOpsFile_FileNotFound(t *testing.T) {
-	_, _, err := ParseOpsFile("/nonexistent/path/Opsfile")
+	_, _, _, _, err := ParseOpsFile("/nonexistent/path/Opsfile")
 	require.Error(t, err)
 }
 
@@ -192,7 +192,7 @@ my-cmd:
     prod:
         aws something
 `
-	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	vars, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	cases := []struct{ name, want string }{
 		{"PLAIN", "123"},
@@ -213,20 +213,20 @@ my-cmd:
     prod:
         aws something
 `
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "unclosed")
 }
 
 func TestParseOpsFile_EmptyFile(t *testing.T) {
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, ""))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, ""))
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "empty")
 }
 
 func TestParseOpsFile_OnlyComments(t *testing.T) {
 	content := "# just a comment\n# another comment\n"
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "empty")
 }
@@ -241,7 +241,7 @@ my-cmd:
     preprod:
         aws ecs something
 `
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "duplicate")
 }
@@ -254,7 +254,7 @@ my-cmd:
     prod:
         aws something
 `
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "missing name")
 }
@@ -266,7 +266,7 @@ my-cmd:
         aws cloudwatch logs \
             --log-group /my/group
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
@@ -281,7 +281,7 @@ my-cmd:
             --log-group /my/group \
             --tail
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
@@ -295,7 +295,7 @@ my-cmd:
         aws logs \
             --tail
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
@@ -309,7 +309,7 @@ my-cmd:
         aws cloudwatch logs
             --log-group /my/group
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
@@ -324,7 +324,7 @@ my-cmd:
             --log-group /my/group
             --tail
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
@@ -339,7 +339,7 @@ my-cmd:
             --log-group /my/group
         echo done
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 2)
@@ -349,7 +349,7 @@ my-cmd:
 
 func TestParseOpsFile_VariableWhitespaceOnlyValue(t *testing.T) {
 	content := "VAR=   \n\nmy-cmd:\n    prod:\n        echo hello\n"
-	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	vars, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	// TrimSpace on the value after "=" yields empty string.
 	assert.Equal(t, "", vars["VAR"])
@@ -363,7 +363,7 @@ my-cmd:
     prod:
         echo hello
 `
-	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	vars, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	assert.Equal(t, "", vars["VAR"])
 }
@@ -380,7 +380,7 @@ my-cmd:
     default:
         echo default
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	cmd := commands["my-cmd"]
 	for _, env := range []string{"prod", "preprod", "local", "default"} {
@@ -398,7 +398,7 @@ my-cmd:
             --follow
             --since 10m
 `
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	// Backslash joins first two into one line; the third line at same indent
@@ -410,7 +410,7 @@ my-cmd:
 
 func TestParseOpsFile_TabIndentedShellLines(t *testing.T) {
 	content := "my-cmd:\n\tprod:\n\t\techo hello\n\t\techo world\n"
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 2)
@@ -422,7 +422,7 @@ func TestParseOpsFile_CommandHeaderTrailingWhitespace(t *testing.T) {
 	// Trailing spaces after ":" should still parse as a command header.
 	// Note: TrimSpace strips trailing whitespace, so "my-cmd:  " -> "my-cmd:"
 	content := "my-cmd:  \n    prod:\n        echo hello\n"
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	assert.Contains(t, commands, "my-cmd")
 }
@@ -430,7 +430,7 @@ func TestParseOpsFile_CommandHeaderTrailingWhitespace(t *testing.T) {
 func TestParseOpsFile_EnvHeaderTrailingWhitespace(t *testing.T) {
 	// Trailing whitespace on env header line.
 	content := "my-cmd:\n    prod:  \n        echo hello\n"
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	assert.Contains(t, commands["my-cmd"].Environments, "prod")
 }
@@ -443,7 +443,7 @@ my-cmd:
     prod:
         echo hello
 `
-	vars, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	vars, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	// parseVariable does TrimSpace on the value after "=", so "  value" -> "value"
 	assert.Equal(t, "value", vars["VAR"])
@@ -458,7 +458,7 @@ my-cmd:
     prod:
         echo hello
 `
-	_, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, _, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.Error(t, err)
 	// The unclosed quote is on line 3 (blank line 1, GOOD=fine line 2, BAD=... line 3).
 	assert.ErrorContains(t, err, "line 3")
@@ -469,10 +469,108 @@ func TestParseOpsFile_BackslashTrailingEOF(t *testing.T) {
 my-cmd:
     prod:
         aws cloudwatch logs \`
-	_, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
 	lines := commands["my-cmd"].Environments["prod"]
 	require.Len(t, lines, 1)
 	// The trailing \ is stripped; what remains is the fragment before it.
 	assert.Equal(t, "aws cloudwatch logs ", lines[0])
+}
+
+func TestParseOpsFile_Description(t *testing.T) {
+	cases := []struct {
+		name     string
+		content  string
+		wantDesc string
+	}{
+		{
+			name: "comment directly above command",
+			content: `# Deploy the service
+deploy:
+    prod:
+        echo deploying
+`,
+			wantDesc: "Deploy the service",
+		},
+		{
+			name: "blank line between comment and command",
+			content: `# Deploy the service
+
+deploy:
+    prod:
+        echo deploying
+`,
+			wantDesc: "",
+		},
+		{
+			name: "multi-line comments capture first line of block",
+			content: `# First line of comments
+# Second line of comments
+# Last line before command
+deploy:
+    prod:
+        echo deploying
+`,
+			wantDesc: "First line of comments",
+		},
+		{
+			name: "no comment yields empty description",
+			content: `deploy:
+    prod:
+        echo deploying
+`,
+			wantDesc: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, tc.content))
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantDesc, commands["deploy"].Description)
+		})
+	}
+}
+
+func TestParseOpsFile_CommandOrder(t *testing.T) {
+	content := `
+# First command
+alpha:
+    default:
+        echo alpha
+
+# Second command
+charlie:
+    default:
+        echo charlie
+
+bravo:
+    default:
+        echo bravo
+`
+	_, _, cmdOrder, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"alpha", "charlie", "bravo"}, cmdOrder)
+}
+
+func TestParseOpsFile_EnvOrder(t *testing.T) {
+	content := `
+cmd-a:
+    prod:
+        echo a-prod
+    local:
+        echo a-local
+
+cmd-b:
+    local:
+        echo b-local
+    preprod:
+        echo b-preprod
+    prod:
+        echo b-prod
+`
+	_, _, _, envOrder, err := ParseOpsFile(writeTempOpsfile(t, content))
+	require.NoError(t, err)
+	// Deduplicated, first-appearance order: prod, local, preprod
+	assert.Equal(t, []string{"prod", "local", "preprod"}, envOrder)
 }

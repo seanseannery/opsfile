@@ -131,6 +131,30 @@ func TestParseOpsFlags(t *testing.T) {
 			wantFlags: OpsFlags{Directory: ""},
 			wantPos:   []string{"prod", "cmd"},
 		},
+		{
+			name:      "-l sets List",
+			input:     []string{"-l"},
+			wantFlags: OpsFlags{List: true},
+			wantPos:   []string{},
+		},
+		{
+			name:      "--list sets List",
+			input:     []string{"--list"},
+			wantFlags: OpsFlags{List: true},
+			wantPos:   []string{},
+		},
+		{
+			name:      "-l with positionals does not consume them",
+			input:     []string{"-l", "prod", "cmd"},
+			wantFlags: OpsFlags{List: true},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:      "-l combined with -D",
+			input:     []string{"-l", "-D", "/tmp", "prod"},
+			wantFlags: OpsFlags{List: true, Directory: "/tmp"},
+			wantPos:   []string{"prod"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -160,7 +184,7 @@ func TestParseOpsFlags_HelpOutput(t *testing.T) {
 	require.ErrorIs(t, gotErr, ErrHelp)
 
 	output := buf.String()
-	for _, want := range []string{"-D", "-d", "-s", "-v"} {
+	for _, want := range []string{"-D", "-d", "-l", "-s", "-v"} {
 		assert.Contains(t, output, want)
 	}
 
