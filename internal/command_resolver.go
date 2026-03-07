@@ -74,7 +74,7 @@ func substituteVars(line, env string, vars OpsVariables) (string, error) {
 
 		end := strings.Index(remaining, ")")
 		if end == -1 {
-			// No closing paren — write the literal "$(" and continue.
+			// No closing paren — treat "$(" as a literal and continue scanning.
 			b.WriteString("$(")
 			continue
 		}

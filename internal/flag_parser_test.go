@@ -94,7 +94,7 @@ func TestParseOpsFlags(t *testing.T) {
 		{
 			name:       "unknown flag returns error",
 			input:      []string{"-z"},
-			wantErrSub: "flag provided but not defined",
+			wantErrSub: "unknown shorthand flag",
 		},
 		{
 			name:      "multiple flags combined -d -s",
@@ -110,7 +110,7 @@ func TestParseOpsFlags(t *testing.T) {
 		{
 			name:       "unknown long flag --foobar",
 			input:      []string{"--foobar"},
-			wantErrSub: "flag provided but not defined",
+			wantErrSub: "unknown flag: --foobar",
 		},
 		{
 			name:      "flag after positional treated as positional",
