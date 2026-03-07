@@ -20,6 +20,7 @@
   npm install -g github:seanseannery/opsfile
   ```
   Requires Node.js ≥ 14. Downloads the correct platform binary from the latest GitHub release on install.
+  To upgrade, re-run the same command. To uninstall: `npm uninstall -g opsfile`.
 
   ### curl (MacOS / Linux)
 
