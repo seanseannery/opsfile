@@ -64,20 +64,37 @@ Flags:`)
 		fs.PrintDefaults()
 	}
 
-	// -? is not a valid flag name; handle it before fs.Parse.
+	// -? is not a valid pflag name; strip it before fs.Parse so other flags
+	// (like -D) are still parsed and returned alongside ErrHelp.
+	helpQuestion := false
 	for _, a := range osArgs {
 		if a == "-?" {
-			fs.Usage()
-			return OpsFlags{}, nil, ErrHelp
+			helpQuestion = true
+			break
 		}
+	}
+	if helpQuestion {
+		filtered := make([]string, 0, len(osArgs))
+		for _, a := range osArgs {
+			if a != "-?" {
+				filtered = append(filtered, a)
+			}
+		}
+		osArgs = filtered
 	}
 
 	if err := fs.Parse(osArgs); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
-			return OpsFlags{}, nil, ErrHelp
+			return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, nil, ErrHelp
 		}
 		return OpsFlags{}, nil, err
 	}
+
+	if helpQuestion {
+		fs.Usage()
+		return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, nil, ErrHelp
+	}
+
 	return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, fs.Args(), nil
 }
 
