@@ -126,6 +126,24 @@ func TestParseOpsFlags(t *testing.T) {
 			wantErr: ErrHelp,
 		},
 		{
+			name:      "-D combined with --help preserves Directory",
+			input:     []string{"-D", "/some/path", "--help"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
+			name:      "-D combined with -? preserves Directory",
+			input:     []string{"-D", "/some/path", "-?"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
+			name:      "-D combined with -h preserves Directory",
+			input:     []string{"-D", "/some/path", "-h"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
 			name:      "-D with empty string value",
 			input:     []string{"-D", "", "prod", "cmd"},
 			wantFlags: OpsFlags{Directory: ""},
@@ -163,6 +181,7 @@ func TestParseOpsFlags(t *testing.T) {
 
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
+				assert.Equal(t, tc.wantFlags, gotFlags)
 				return
 			}
 			if tc.wantErrSub != "" {
