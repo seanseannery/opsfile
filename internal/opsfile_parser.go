@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -15,7 +16,8 @@ type OpsVariables map[string]string
 
 // OpsCommand represents a single named command with per-environment shell lines.
 type OpsCommand struct {
-	Name string
+	Name        string
+	Description string // from # comment directly above declaration
 	// Environments maps environment name to the ordered list of shell lines to execute.
 	// "default" is a valid key used as a fallback at execution time.
 	Environments map[string][]string
@@ -40,14 +42,18 @@ type parser struct {
 	seenShellLine   bool   // true once the first shell line in the current env has been recorded
 	lastShellIndent int    // leading-whitespace count of the last new shell line
 	lineNum         int    // current 1-based line number, for error messages
+	lastComment     string // text of most recent # comment line (cleared by blank lines)
+	order           []string
+	envOrder        []string
 }
 
 // ParseOpsFile reads and parses an Opsfile at the given path.
-// It returns the declared variables and commands, skipping comments and blank lines.
-func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
+// It returns the declared variables, commands, command declaration order,
+// environment declaration order, and any error.
+func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, []string, []string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening Opsfile: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("opening Opsfile: %w", err)
 	}
 	defer f.Close()
 
@@ -59,25 +65,25 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		if err := p.processLine(scanner.Text()); err != nil {
-			return nil, nil, fmt.Errorf("line %d: %w", p.lineNum, err)
+			return nil, nil, nil, nil, fmt.Errorf("line %d: %w", p.lineNum, err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("reading Opsfile: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("reading Opsfile: %w", err)
 	}
 
 	// Flush any trailing backslash-continuation fragment at end of file.
 	p.flushContinuation()
 
 	if err := p.validate(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	commands := make(map[string]OpsCommand, len(p.commands))
 	for k, v := range p.commands {
 		commands[k] = *v
 	}
-	return p.variables, commands, nil
+	return p.variables, commands, p.order, p.envOrder, nil
 }
 
 // processLine categorises a raw line and dispatches to the appropriate handler.
@@ -86,7 +92,17 @@ func (p *parser) processLine(raw string) error {
 	isIndented := len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t')
 	line := strings.TrimSpace(raw)
 
-	if line == "" || strings.HasPrefix(line, "#") {
+	if line == "" {
+		p.lastComment = ""
+		return nil
+	}
+	if strings.HasPrefix(line, "#") {
+		// Capture only the first line of a contiguous comment block so that
+		// multi-line explanatory comments use the title/summary line as the
+		// command description, not the last detail line.
+		if p.lastComment == "" {
+			p.lastComment = strings.TrimPrefix(line[1:], " ")
+		}
 		return nil
 	}
 	// A non-indented line always resets context back to the top level.
@@ -214,7 +230,13 @@ func (p *parser) startCommand(name string) error {
 		return fmt.Errorf("duplicate command %q", name)
 	}
 	p.currentCommand = name
-	p.commands[name] = &OpsCommand{Name: name, Environments: make(map[string][]string)}
+	p.commands[name] = &OpsCommand{
+		Name:         name,
+		Description:  p.lastComment,
+		Environments: make(map[string][]string),
+	}
+	p.lastComment = ""
+	p.order = append(p.order, name)
 	p.state = inCommand
 	return nil
 }
@@ -224,6 +246,9 @@ func (p *parser) startEnv(name string) {
 	cmd := p.commands[p.currentCommand]
 	if _, exists := cmd.Environments[name]; !exists {
 		cmd.Environments[name] = []string{}
+	}
+	if !slices.Contains(p.envOrder, name) {
+		p.envOrder = append(p.envOrder, name)
 	}
 	p.seenShellLine = false
 	p.state = inEnvironment

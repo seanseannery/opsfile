@@ -11,7 +11,7 @@ import (
 // returns the variables and commands maps. Fails the test on parse error.
 func parseFixture(t *testing.T, content string) (OpsVariables, map[string]OpsCommand) {
 	t.Helper()
-	vars, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
+	vars, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err, "ParseOpsFile")
 	return vars, commands
 }

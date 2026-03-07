@@ -19,6 +19,14 @@ func main() {
 
 	flags, positionals, err := internal.ParseOpsFlags(os.Args[1:], nil)
 	if errors.Is(err, internal.ErrHelp) {
+		// Best-effort: show available commands alongside help
+		if dir, dirErr := resolveOpsfileDir(flags.Directory); dirErr == nil {
+			opsfilePath := filepath.Join(dir, opsFileName)
+			if _, cmds, cmdOrder, envOrder, perr := internal.ParseOpsFile(opsfilePath); perr == nil {
+				fmt.Fprintln(os.Stderr)
+				internal.FormatCommandList(os.Stderr, opsfilePath, cmds, cmdOrder, envOrder)
+			}
+		}
 		os.Exit(0)
 	}
 	if err != nil {
@@ -42,10 +50,22 @@ func main() {
 		}
 	}
 
-	vars, commands, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
+	vars, commands, cmdOrder, envOrder, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
 	if err != nil {
 		slog.Error("parsing Opsfile: " + err.Error())
 		os.Exit(1)
+	}
+
+	if flags.List {
+		absPath := filepath.Join(dir, opsFileName)
+		displayPath := absPath
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			if rel, relErr := filepath.Rel(cwd, absPath); relErr == nil {
+				displayPath = rel
+			}
+		}
+		internal.FormatCommandList(os.Stdout, displayPath, commands, cmdOrder, envOrder)
+		os.Exit(0)
 	}
 
 	args, err := internal.ParseOpsArgs(positionals)
@@ -82,6 +102,15 @@ func main() {
 		slog.Error("executing command: " + err.Error())
 		os.Exit(1)
 	}
+}
+
+// resolveOpsfileDir returns the directory containing the Opsfile, preferring
+// flagDir when set and falling back to getClosestOpsfilePath.
+func resolveOpsfileDir(flagDir string) (string, error) {
+	if flagDir != "" {
+		return flagDir, nil
+	}
+	return getClosestOpsfilePath()
 }
 
 // getClosestOpsfilePath returns the directory containing the nearest Opsfile,

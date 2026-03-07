@@ -20,6 +20,7 @@ var ErrHelp = errors.New("help requested")
 type OpsFlags struct {
 	Directory string // -D / --directory
 	DryRun    bool   // -d / --dry-run
+	List      bool   // -l / --list
 	Silent    bool   // -s / --silent
 	Version   bool   // -v / --version
 }
@@ -47,6 +48,7 @@ func ParseOpsFlags(osArgs []string, usageOutput io.Writer) (OpsFlags, []string, 
 	dir := fs.StringP("directory", "D", "", "use Opsfile in the given `directory`")
 	dryRun := fs.BoolP("dry-run", "d", false, "print commands without executing")
 	silent := fs.BoolP("silent", "s", false, "execute without printing output")
+	list := fs.BoolP("list", "l", false, "list available commands and environments")
 	ver := fs.BoolP("version", "v", false, "print the ops version and exit")
 
 	fs.Usage = func() {
@@ -76,7 +78,7 @@ Flags:`)
 		}
 		return OpsFlags{}, nil, err
 	}
-	return OpsFlags{Directory: *dir, DryRun: *dryRun, Silent: *silent, Version: *ver}, fs.Args(), nil
+	return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, fs.Args(), nil
 }
 
 // ParseOpsArgs parses the positional non-flag arguments returned by ParseOpsFlags into
