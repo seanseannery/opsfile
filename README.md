@@ -6,12 +6,20 @@
 
 ## Installation
 
-  ### MacOS / Linux
+  ### Homebrew (MacOS / Linux)
+
+  ```bash
+  brew tap seanseannery/opsfile https://github.com/seanseannery/opsfile
+  brew install seanseannery/opsfile
+  ```
+  After tapping, `brew upgrade seanseannery/opsfile` keeps `ops` up to date.
+
+  ### curl (MacOS / Linux)
 
   ```bash
   curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash
   ```
-  Paste this in your terminal. The script detects your OS, downloads the correct binary from the [latest GitHub release](https://github.com/seanseannery/opsfile/releases/latest), and installs to `/usr/local/bin/ops`
+  Detects your OS, downloads the correct binary from the [latest GitHub release](https://github.com/seanseannery/opsfile/releases/latest), and installs to `/usr/local/bin/ops`.
 
   ### Windows
   Download `ops.exe` directly from the [releases page](https://github.com/seanseannery/opsfile/releases/latest).
