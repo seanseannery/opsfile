@@ -111,6 +111,14 @@ a:hover {
   margin-bottom: 8px;
 }
 
+.tagline code {
+  font-family: monospace;
+  color: var(--cyan);
+  background: var(--bg-hl);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
 .subtitle {
   color: var(--muted);
   font-size: 1rem;
@@ -194,17 +202,18 @@ a:hover {
   font-family: monospace;
   font-size: 0.9rem;
   line-height: 1.8;
+  text-align: left;
 }
 
-.line {
-  opacity: 0;
-  animation: appear 0.3s ease forwards;
-}
+/* Each line encodes its delay as a % of the 20s cycle so infinite loops work.
+   Line 1: appears at 0.5s (2%), Line 2: 1.5s (7%), Line 3: 2.5s (12%), Line 4: 3.5s (17%).
+   All lines fade out at 88–96% then reset to 0 for the next loop. */
+.line { opacity: 0; }
 
-.line:nth-child(1) { animation-delay: 0.5s; }
-.line:nth-child(2) { animation-delay: 1.5s; }
-.line:nth-child(3) { animation-delay: 2.5s; }
-.line:nth-child(4) { animation-delay: 3.5s; }
+.line:nth-child(1) { animation: appear-1 20s ease infinite; }
+.line:nth-child(2) { animation: appear-2 20s ease infinite; }
+.line:nth-child(3) { animation: appear-3 20s ease infinite; }
+.line:nth-child(4) { animation: appear-4 20s ease infinite; }
 
 .prompt { color: var(--green); }
 .cmd    { color: var(--bright); }
@@ -219,9 +228,28 @@ a:hover {
   animation: blink 1s step-end infinite;
 }
 
-@keyframes appear {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: none; }
+@keyframes appear-1 {
+  0%,   2%  { opacity: 0; transform: translateY(4px); }
+  4%,  88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-2 {
+  0%,   7%  { opacity: 0; transform: translateY(4px); }
+  9%,  88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-3 {
+  0%,  12%  { opacity: 0; transform: translateY(4px); }
+  14%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-4 {
+  0%,  17%  { opacity: 0; transform: translateY(4px); }
+  19%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
 }
 
 @keyframes blink {
@@ -292,6 +320,57 @@ pre > code {
   color: var(--bright);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* ─── Copy Button ────────────────────────────────────────────── */
+.code-block {
+  position: relative;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--subtle);
+  color: var(--bright);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.copy-btn:hover {
+  background: var(--cyan);
+  color: var(--bg);
+}
+
+/* ─── Opsfile Syntax Highlighting ────────────────────────────── */
+.sh-comment { color: var(--subtle); font-style: italic; }
+.sh-varname  { color: var(--blue); }
+.sh-val      { color: var(--yellow); }
+.sh-cmd      { color: var(--cyan); font-weight: bold; }
+.sh-env      { color: var(--green); }
+.sh-subst    { color: var(--orange); }
+
+/* ─── Bash Example Block ─────────────────────────────────────── */
+.bash-example {
+  background: var(--bg-hl);
+  border-radius: 4px;
+  padding: 16px 20px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.8;
+  margin: 16px 0;
+  border-left: 3px solid var(--green);
+  color: var(--bright);
+}
+
+.bash-example .prompt {
+  color: var(--green);
+  user-select: none;
 }
 
 /* ─── Usage Section ──────────────────────────────────────────── */
