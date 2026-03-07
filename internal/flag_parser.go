@@ -2,10 +2,10 @@ package internal
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"runtime"
-	"slices"
+
+	pflag "github.com/spf13/pflag"
 )
 
 // the structure of the ops commandline argument should be
@@ -34,16 +34,13 @@ type Args struct {
 // Returns ErrHelp if -h, --help, or -? is passed (usage is printed to stderr).
 // Returns an error for unrecognised flags.
 func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
-	fs := flag.NewFlagSet("ops", flag.ContinueOnError)
+	fs := pflag.NewFlagSet("ops", pflag.ContinueOnError)
+	fs.SetInterspersed(false) // stop flag parsing at the first non-flag arg (stdlib flag behaviour)
 
-	dir := fs.String("D", "", "use Opsfile in the given `directory`")
-	fs.StringVar(dir, "directory", "", "use Opsfile in the given `directory`")
-	dryRun := fs.Bool("d", false, "print commands without executing")
-	fs.BoolVar(dryRun, "dry-run", false, "print commands without executing")
-	silent := fs.Bool("s", false, "execute without printing output")
-	fs.BoolVar(silent, "silent", false, "execute without printing output")
-	ver := fs.Bool("v", false, "print the ops version and exit")
-	fs.BoolVar(ver, "version", false, "print the ops version and exit")
+	dir := fs.StringP("directory", "D", "", "use Opsfile in the given `directory`")
+	dryRun := fs.BoolP("dry-run", "d", false, "print commands without executing")
+	silent := fs.BoolP("silent", "s", false, "execute without printing output")
+	ver := fs.BoolP("version", "v", false, "print the ops version and exit")
 
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "ops version %s (commit: %s) %s/%s\n\n", Version, Commit, runtime.GOOS, runtime.GOARCH)
@@ -54,18 +51,20 @@ Usage: ops [flags] <environment> <command> [command-args]
       ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'
 
 Flags:`)
-
+		fmt.Fprintln(fs.Output())
 		fs.PrintDefaults()
 	}
 
 	// -? is not a valid flag name; handle it before fs.Parse.
-	if slices.Contains(osArgs, "-?") {
-		fs.Usage()
-		return OpsFlags{}, nil, ErrHelp
+	for _, a := range osArgs {
+		if a == "-?" {
+			fs.Usage()
+			return OpsFlags{}, nil, ErrHelp
+		}
 	}
 
 	if err := fs.Parse(osArgs); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+		if errors.Is(err, pflag.ErrHelp) {
 			return OpsFlags{}, nil, ErrHelp
 		}
 		return OpsFlags{}, nil, err
