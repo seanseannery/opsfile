@@ -52,6 +52,10 @@ deps:
 test:
 	go test -v ./...
 
+## test-install: run end-to-end install smoke tests (curl and brew)
+test-install:
+	bash install/install_test.sh
+
 ## lint: check formatting (gofmt) and run static analysis (go vet)
 lint:
 	@echo "--- gofmt ---"; \
