@@ -11,14 +11,18 @@ FAIL=0
 BREW_TAPPED=false
 BREW_INSTALLED=false
 
-CURL_INSTALL_PATH="/usr/local/bin/ops"
+CURL_TMP_DIR=""
 
 pass() { echo "  PASS: $1"; ((PASS++)) || true; }
 fail() { echo "  FAIL: $1" >&2; ((FAIL++)) || true; }
 
-cleanup_brew() {
+cleanup() {
   echo ""
   echo "=== cleanup ==="
+  if [ -n "$CURL_TMP_DIR" ] && [ -d "$CURL_TMP_DIR" ]; then
+    rm -rf "$CURL_TMP_DIR"
+    echo "  curl tmp dir removed"
+  fi
   if [ "$BREW_INSTALLED" = true ]; then
     brew uninstall opsfile 2>/dev/null && echo "  brew uninstall: done" || echo "  brew uninstall: skipped"
   fi
@@ -26,7 +30,7 @@ cleanup_brew() {
     brew untap seanseannery/opsfile 2>/dev/null && echo "  brew untap: done" || echo "  brew untap: skipped"
   fi
 }
-trap cleanup_brew EXIT
+trap cleanup EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -35,20 +39,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo ""
 echo "=== curl install test ==="
 
-if bash "$SCRIPT_DIR/install.sh"; then
-  if ops --version > /dev/null 2>&1; then
+CURL_TMP_DIR="$(mktemp -d)"
+if INSTALL_DIR="$CURL_TMP_DIR" bash "$SCRIPT_DIR/install.sh"; then
+  if "$CURL_TMP_DIR/ops" --version > /dev/null 2>&1; then
     pass "ops binary installed and responds to --version"
   else
     fail "ops binary installed but --version failed"
   fi
 else
   fail "curl install script exited non-zero"
-fi
-
-# Remove curl-installed binary before brew test to avoid path conflicts.
-if [ -f "$CURL_INSTALL_PATH" ]; then
-  rm -f "$CURL_INSTALL_PATH" 2>/dev/null || sudo rm -f "$CURL_INSTALL_PATH"
-  pass "curl cleanup: removed $CURL_INSTALL_PATH"
 fi
 
 # ── brew install test ─────────────────────────────────────────────────────────
