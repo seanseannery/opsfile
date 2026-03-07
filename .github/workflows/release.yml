@@ -23,17 +23,23 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Run tests
+        run: make test
+
+  install-test:
+    name: Install smoke tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run tests
-        run: make test
       - name: Run install smoke tests
         run: make test-install
 
   release:
     name: Release
-    needs: test
+    needs: [test, install-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
