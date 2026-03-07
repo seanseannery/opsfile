@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ops — like make, but for live operations commands">
+  <title>ops — live operations CLI</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="container">
+      <span class="logo">ops</span>
+      <nav class="site-nav">
+        <a href="#install">Install</a>
+        <a href="#usage">Usage</a>
+        <a href="https://github.com/seanseannery/opsfile">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <h1>ops</h1>
+      <p class="tagline">like make, but for live operations</p>
+      <p class="subtitle">Create an Opsfile. Run ops [env] [command]. Done.</p>
+      <div class="cta-buttons">
+        <a href="#install" class="btn-primary">Install</a>
+        <a href="https://github.com/seanseannery/opsfile" class="btn-secondary">View on GitHub</a>
+      </div>
+
+      <!-- TERMINAL DEMO -->
+      <div id="terminal-demo">
+        <div class="terminal-bar">
+          <span class="terminal-dot" style="background:#ff5f57;"></span>
+          <span class="terminal-dot" style="background:#febc2e;"></span>
+          <span class="terminal-dot" style="background:#28c840;"></span>
+        </div>
+        <div class="terminal-body">
+          <div class="line" style="animation-delay:0.5s;">
+            <span class="prompt">$</span><span class="cmd"> ops prod tail-logs</span>
+          </div>
+          <div class="line" style="animation-delay:1.5s;">
+            <span class="out">Fetching logs from /aws/ecs/my-service-prod ...</span>
+          </div>
+          <div class="line" style="animation-delay:2.5s;">
+            <span class="prompt">$</span><span class="cmd"> ops prod check-alarms</span>
+          </div>
+          <div class="line" style="animation-delay:3.5s;">
+            <span class="out">No alarms in ALARM state. All clear.</span>
+          </div>
+          <span class="cursor" style="animation-delay:3.5s;"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section id="install" class="install-section">
+    <div class="container">
+      <h2>Installation</h2>
+      <div class="install-tabs">
+        <button class="tab-btn" data-tab="tab-brew">Homebrew</button>
+        <button class="tab-btn" data-tab="tab-npm">npm</button>
+        <button class="tab-btn" data-tab="tab-curl">curl</button>
+      </div>
+
+      <div id="tab-brew" class="tab-content code-block">
+        <pre><code>brew tap seanseannery/opsfile https://github.com/seanseannery/opsfile
+brew install seanseannery/opsfile/opsfile</code></pre>
+      </div>
+
+      <div id="tab-npm" class="tab-content code-block">
+        <pre><code>npm install -g github:seanseannery/opsfile</code></pre>
+      </div>
+
+      <div id="tab-curl" class="tab-content code-block">
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- USAGE -->
+  <section id="usage" class="usage-section">
+    <div class="container">
+      <h2>Getting Started</h2>
+
+      <h3>Step 1: Create an Opsfile</h3>
+      <p>Create an <code>Opsfile</code> in your repo root. It uses Makefile-style syntax:</p>
+      <div class="opsfile-example code-block">
+        <pre><code># Variables — prefix with environment name to scope them
+prod_AWS_ACCOUNT=1234567
+preprod_AWS_ACCOUNT=8765431
+
+# Commands — define per-environment shell lines
+# Use "default" as a fallback when env-specific block is absent
+tail-logs:
+    default:
+        aws cloudwatch logs --tail $(AWS_ACCOUNT)
+    local:
+        docker logs myapp --follow
+
+list-instance-ips:
+    prod:
+        aws ec2 --list-instances
+    preprod:
+        aws ecs cluster --list-instances
+
+# Shell environment variables are injected automatically using the same $(VAR) syntax.
+# No declaration needed — if ops can't find it in the Opsfile, it falls back to env variables
+show-profile:
+    default:
+        echo "Using AWS profile: $(AWS_PROFILE)"</code></pre>
+      </div>
+
+      <h3>Step 2: Run ops commands</h3>
+      <p>Run commands with the following syntax:</p>
+      <div class="code-block">
+        <pre><code>ops [flags] &lt;your_environment&gt; &lt;your_command&gt; [any-command-args]</code></pre>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Flag</th>
+            <th>Short</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--directory &lt;path&gt;</code></td><td><code>-D &lt;path&gt;</code></td><td>Use the Opsfile in the given directory</td></tr>
+          <tr><td><code>--dry-run</code></td><td><code>-d</code></td><td>Print resolved commands without executing</td></tr>
+          <tr><td><code>--silent</code></td><td><code>-s</code></td><td>Execute commands without printing output</td></tr>
+          <tr><td><code>--version</code></td><td><code>-v</code></td><td>Print the ops version and exit</td></tr>
+          <tr><td><code>--help</code></td><td><code>-h</code></td><td>Show usage information and exit</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Examples:</h4>
+      <div class="code-block">
+        <pre><code>ops preprod instance-count
+ops prod open-dashboard
+ops local logs
+ops prod k8s -namespace myspace</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features-section">
+    <div class="container">
+      <h2>Why use it?</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <div class="feature-title">Less Stress</div>
+          <p>Quickly find the right command during a live outage</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <div class="feature-title">Less AI tokens</div>
+          <p>Let agents run ops scripts instead of googling commands</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📖</div>
+          <div class="feature-title">Knowledge Sharing</div>
+          <p>Share runbooks with your team as code</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <div class="feature-title">Encapsulation</div>
+          <p>Keep your Makefile focused on CI/CD</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LINKS -->
+  <section class="links-section">
+    <div class="container">
+      <h2>Links</h2>
+      <div class="links-grid">
+        <a href="https://github.com/seanseannery/opsfile" class="link-card">
+          <strong>GitHub Repo</strong>
+          <span>Source code and documentation</span>
+        </a>
+        <a href="https://github.com/seanseannery/opsfile/releases" class="link-card">
+          <strong>Releases</strong>
+          <span>Download binaries and changelogs</span>
+        </a>
+        <a href="https://github.com/seanseannery/opsfile/issues" class="link-card">
+          <strong>Issues</strong>
+          <span>Bug reports and feature requests</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2025 opsfile · MIT License · <a href="https://github.com/seanseannery/opsfile">GitHub</a></p>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+    document.querySelector('.tab-btn').click();
+  </script>
+
+</body>
+</html>
