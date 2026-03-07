@@ -27,7 +27,7 @@
   ### curl (MacOS / Linux)
 
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/seanseannery/opsfile/main/install/install.sh | bash
+  curl -fsSL https://seanseannery.github.io/opsfile/install.sh | bash
   ```
   Detects your OS, downloads the correct binary from the [latest GitHub release](https://github.com/seanseannery/opsfile/releases/latest), and installs to `/usr/local/bin/ops`.
 
