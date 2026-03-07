@@ -125,6 +125,14 @@ a:hover {
   margin-bottom: 32px;
 }
 
+.subtitle code {
+  font-family: monospace;
+  color: var(--cyan);
+  background: var(--bg-hl);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
 .cta-buttons {
   display: flex;
   gap: 12px;
