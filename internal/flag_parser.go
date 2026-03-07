@@ -3,6 +3,8 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"runtime"
 
 	pflag "github.com/spf13/pflag"
@@ -31,10 +33,15 @@ type Args struct {
 
 // ParseOpsFlags parses ops-level flags from osArgs and returns the flag values
 // and the remaining positional arguments.
-// Returns ErrHelp if -h, --help, or -? is passed (usage is printed to stderr).
+// Returns ErrHelp if -h, --help, or -? is passed (usage is printed to usageOutput).
 // Returns an error for unrecognised flags.
-func ParseOpsFlags(osArgs []string) (OpsFlags, []string, error) {
+// If usageOutput is nil, os.Stderr is used.
+func ParseOpsFlags(osArgs []string, usageOutput io.Writer) (OpsFlags, []string, error) {
+	if usageOutput == nil {
+		usageOutput = os.Stderr
+	}
 	fs := pflag.NewFlagSet("ops", pflag.ContinueOnError)
+	fs.SetOutput(usageOutput)
 	fs.SetInterspersed(false) // stop flag parsing at the first non-flag arg (stdlib flag behaviour)
 
 	dir := fs.StringP("directory", "D", "", "use Opsfile in the given `directory`")

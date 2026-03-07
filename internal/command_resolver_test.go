@@ -1,8 +1,10 @@
 package internal
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // parseFixture is a test helper that parses an inline Opsfile string and
@@ -10,9 +12,7 @@ import (
 func parseFixture(t *testing.T, content string) (OpsVariables, map[string]OpsCommand) {
 	t.Helper()
 	vars, commands, err := ParseOpsFile(writeTempOpsfile(t, content))
-	if err != nil {
-		t.Fatalf("ParseOpsFile: %v", err)
-	}
+	require.NoError(t, err, "ParseOpsFile")
 	return vars, commands
 }
 
@@ -26,30 +26,17 @@ list-instance-ips:
         aws ecs --list-instances
 `)
 	got, err := Resolve("list-instance-ips", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want := []string{`aws ec2 --list-instances`, `echo "done"`}
-	if len(got.Lines) != len(want) {
-		t.Fatalf("got %d lines, want %d: %v", len(got.Lines), len(want), got.Lines)
-	}
-	for i, w := range want {
-		if got.Lines[i] != w {
-			t.Errorf("line %d: got %q, want %q", i, got.Lines[i], w)
-		}
-	}
+	assert.Equal(t, want, got.Lines)
 }
 
 func TestResolve_EmptyCommandsMap(t *testing.T) {
 	commands := map[string]OpsCommand{}
 	vars := OpsVariables{}
 	_, err := Resolve("anything", "prod", commands, vars)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error %q does not contain 'not found'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
 }
 
 func TestResolve_CommandWithEmptyShellLines(t *testing.T) {
@@ -58,12 +45,8 @@ func TestResolve_CommandWithEmptyShellLines(t *testing.T) {
 	}
 	vars := OpsVariables{}
 	got, err := Resolve("empty", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got.Lines) != 0 {
-		t.Errorf("got %d lines, want 0", len(got.Lines))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, got.Lines)
 }
 
 func TestResolve_MultipleVariablesInOneLine(t *testing.T) {
@@ -76,13 +59,8 @@ my-cmd:
         echo $(A) $(B)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo hello world"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo hello world", got.Lines[0])
 }
 
 func TestResolve_VariableUsedMultipleTimes(t *testing.T) {
@@ -94,13 +72,8 @@ my-cmd:
         echo $(A) and $(A)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo val and val"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo val and val", got.Lines[0])
 }
 
 func TestResolve_UnclosedDollarParen(t *testing.T) {
@@ -111,13 +84,8 @@ func TestResolve_UnclosedDollarParen(t *testing.T) {
 	}
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo $(incomplete"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo $(incomplete", got.Lines[0])
 }
 
 func TestResolve_MixedIdentifierAndNonIdentifier(t *testing.T) {
@@ -129,13 +97,8 @@ my-cmd:
         $(VAR) $(shell cmd)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "hello $(shell cmd)"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "hello $(shell cmd)", got.Lines[0])
 }
 
 func TestResolve_DefaultFallbackVariableScoping(t *testing.T) {
@@ -148,13 +111,8 @@ my-cmd:
         echo $(ACCOUNT)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo prod-acct"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo prod-acct", got.Lines[0])
 }
 
 func TestResolve_SameVarReferencedTwice(t *testing.T) {
@@ -166,12 +124,8 @@ my-cmd:
         $(VAR) $(VAR)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "x x" {
-		t.Errorf("got %q, want %q", got.Lines[0], "x x")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "x x", got.Lines[0])
 }
 
 func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
@@ -182,13 +136,8 @@ func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
 	}
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo $("
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo $(", got.Lines[0])
 }
 
 func TestResolve_EmptyToken(t *testing.T) {
@@ -199,13 +148,8 @@ func TestResolve_EmptyToken(t *testing.T) {
 	}
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo $()"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo $()", got.Lines[0])
 }
 
 func TestResolve_ScopedLookupPriority(t *testing.T) {
@@ -219,12 +163,8 @@ func TestResolve_ScopedLookupPriority(t *testing.T) {
 		"HOST":      "default.example.com",
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo prod.example.com" {
-		t.Errorf("got %q, want scoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo prod.example.com", got.Lines[0])
 }
 
 func TestResolve_UnscopedFallbackDirect(t *testing.T) {
@@ -237,12 +177,8 @@ func TestResolve_UnscopedFallbackDirect(t *testing.T) {
 		"HOST": "default.example.com",
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo default.example.com" {
-		t.Errorf("got %q, want unscoped fallback", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo default.example.com", got.Lines[0])
 }
 
 func TestResolve_MissingVariableReturnsError(t *testing.T) {
@@ -253,12 +189,8 @@ func TestResolve_MissingVariableReturnsError(t *testing.T) {
 	}
 	vars := OpsVariables{}
 	_, err := Resolve("my-cmd", "prod", commands, vars)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not defined") {
-		t.Errorf("error %q does not contain 'not defined'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
 }
 
 func TestResolve_DefaultFallback(t *testing.T) {
@@ -270,16 +202,9 @@ tail-logs:
         aws cloudwatch logs --tail $(AWS_ACCOUNT)
 `)
 	got, err := Resolve("tail-logs", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got.Lines) != 1 {
-		t.Fatalf("got %d lines, want 1: %v", len(got.Lines), got.Lines)
-	}
-	want := "aws cloudwatch logs --tail 1234567"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws cloudwatch logs --tail 1234567", got.Lines[0])
 }
 
 func TestResolve_LocalOverridesDefault(t *testing.T) {
@@ -291,15 +216,9 @@ tail-logs:
         docker logs myapp --follow
 `)
 	got, err := Resolve("tail-logs", "local", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got.Lines) != 1 {
-		t.Fatalf("got %d lines, want 1: %v", len(got.Lines), got.Lines)
-	}
-	if got.Lines[0] != "docker logs myapp --follow" {
-		t.Errorf("got %q, want local block line", got.Lines[0])
-	}
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "docker logs myapp --follow", got.Lines[0])
 }
 
 func TestResolve_ScopedPriority(t *testing.T) {
@@ -312,12 +231,8 @@ tail-logs:
         echo $(AWS_ACCOUNT)
 `)
 	got, err := Resolve("tail-logs", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo scoped" {
-		t.Errorf("got %q, expected scoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo scoped", got.Lines[0])
 }
 
 func TestResolve_UnscopedFallback(t *testing.T) {
@@ -329,12 +244,8 @@ tail-logs:
         echo $(AWS_ACCOUNT)
 `)
 	got, err := Resolve("tail-logs", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo unscoped" {
-		t.Errorf("got %q, expected unscoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo unscoped", got.Lines[0])
 }
 
 func TestResolve_CommandNotFound(t *testing.T) {
@@ -344,12 +255,8 @@ my-cmd:
         echo hello
 `)
 	_, err := Resolve("nonexistent", "prod", commands, vars)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error %q does not contain 'not found'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
 }
 
 func TestResolve_EnvNotFoundNoDefault(t *testing.T) {
@@ -359,12 +266,8 @@ my-cmd:
         echo hello
 `)
 	_, err := Resolve("my-cmd", "staging", commands, vars)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "no default") {
-		t.Errorf("error %q does not contain 'no default'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "no default")
 }
 
 func TestResolve_VariableNotDefined(t *testing.T) {
@@ -374,12 +277,8 @@ my-cmd:
         echo $(MISSING_VAR)
 `)
 	_, err := Resolve("my-cmd", "prod", commands, vars)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not defined") {
-		t.Errorf("error %q does not contain 'not defined'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
 }
 
 func TestResolve_NonIdentifierPassthrough(t *testing.T) {
@@ -389,13 +288,8 @@ my-cmd:
         echo $(aws ec2 describe-instances)
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo $(aws ec2 describe-instances)"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0])
 }
 
 func TestResolve_MultiLineCommand(t *testing.T) {
@@ -409,21 +303,12 @@ deploy:
         echo "done in $(REGION)"
 `)
 	got, err := Resolve("deploy", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 	want := []string{
 		"aws ecs describe-clusters --cluster my-cluster --region us-east-1",
 		`echo "done in us-east-1"`,
 	}
-	if len(got.Lines) != len(want) {
-		t.Fatalf("got %d lines, want %d: %v", len(got.Lines), len(want), got.Lines)
-	}
-	for i, w := range want {
-		if got.Lines[i] != w {
-			t.Errorf("line %d: got %q, want %q", i, got.Lines[i], w)
-		}
-	}
+	assert.Equal(t, want, got.Lines)
 }
 
 // --- Shell environment variable injection tests ---
@@ -436,12 +321,8 @@ func TestResolveVar_UnscopedShellEnvFallback(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo from-shell" {
-		t.Errorf("got %q, want shell unscoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo from-shell", got.Lines[0])
 }
 
 func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
@@ -452,12 +333,8 @@ func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo shell-scoped" {
-		t.Errorf("got %q, want shell env-scoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo shell-scoped", got.Lines[0])
 }
 
 func TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped(t *testing.T) {
@@ -469,12 +346,8 @@ func TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped(t *testing.T) {
 	}
 	vars := OpsVariables{"prod_VAR": "opsfile-scoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo opsfile-scoped" {
-		t.Errorf("got %q, want Opsfile env-scoped value", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo opsfile-scoped", got.Lines[0])
 }
 
 func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
@@ -486,12 +359,8 @@ func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
 	}
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo shell-scoped" {
-		t.Errorf("got %q, want shell env-scoped over Opsfile unscoped", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo shell-scoped", got.Lines[0])
 }
 
 func TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped(t *testing.T) {
@@ -503,12 +372,8 @@ func TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped(t *testing.T) {
 	}
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo opsfile-unscoped" {
-		t.Errorf("got %q, want Opsfile unscoped over shell unscoped", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo opsfile-unscoped", got.Lines[0])
 }
 
 func TestResolveVar_ShellEnvUnscopedIsLastResort(t *testing.T) {
@@ -519,12 +384,8 @@ func TestResolveVar_ShellEnvUnscopedIsLastResort(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo shell-unscoped" {
-		t.Errorf("got %q, want shell unscoped as last resort", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo shell-unscoped", got.Lines[0])
 }
 
 func TestResolveVar_PriorityChain(t *testing.T) {
@@ -570,13 +431,8 @@ func TestResolveVar_PriorityChain(t *testing.T) {
 				}},
 			}
 			got, err := Resolve("my-cmd", "prod", commands, tc.opsfileVars)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			want := "echo " + tc.want
-			if got.Lines[0] != want {
-				t.Errorf("got %q, want %q", got.Lines[0], want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, "echo "+tc.want, got.Lines[0])
 		})
 	}
 }
@@ -590,12 +446,8 @@ func TestResolveVar_MixedSources(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo from-opsfile from-shell" {
-		t.Errorf("got %q, want mixed source substitution", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo from-opsfile from-shell", got.Lines[0])
 }
 
 func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
@@ -606,12 +458,8 @@ func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Lines[0] != "echo " {
-		t.Errorf("got %q, want empty string substitution", got.Lines[0])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo ", got.Lines[0])
 }
 
 func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
@@ -622,13 +470,8 @@ func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
 		}},
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "echo $(aws ec2 describe-instances)"
-	if got.Lines[0] != want {
-		t.Errorf("got %q, want %q", got.Lines[0], want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0])
 }
 
 func TestResolveVar_AbsentFromAllSources(t *testing.T) {
@@ -638,10 +481,6 @@ func TestResolveVar_AbsentFromAllSources(t *testing.T) {
 		}},
 	}
 	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not defined") {
-		t.Errorf("error %q does not contain 'not defined'", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
 }

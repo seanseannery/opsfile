@@ -3,8 +3,10 @@ package internal
 import (
 	"errors"
 	"os/exec"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExecute(t *testing.T) {
@@ -56,53 +58,35 @@ func TestExecute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := Execute(tc.lines, "/bin/sh")
 			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got nil")
-				}
+				require.Error(t, err)
 				var exitErr *exec.ExitError
-				if !errors.As(err, &exitErr) {
-					t.Fatalf("expected *exec.ExitError, got %T: %v", err, err)
-				}
-				if exitErr.ExitCode() != tc.wantExitCode {
-					t.Errorf("exit code: got %d, want %d", exitErr.ExitCode(), tc.wantExitCode)
-				}
+				require.True(t, errors.As(err, &exitErr), "expected *exec.ExitError, got %T: %v", err, err)
+				assert.Equal(t, tc.wantExitCode, exitErr.ExitCode())
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
 
 func TestExecute_ErrorWrapsCommandString(t *testing.T) {
 	err := Execute([]string{"this-command-does-not-exist-at-all"}, "/bin/sh")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "this-command-does-not-exist-at-all") {
-		t.Errorf("error %q does not contain the command string", err.Error())
-	}
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "this-command-does-not-exist-at-all")
 }
 
 func TestExecute_InvalidShellPath(t *testing.T) {
 	err := Execute([]string{"echo hello"}, "/nonexistent/shell/binary")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
+	require.Error(t, err)
 }
 
 func TestExecute_CommandWithPipe(t *testing.T) {
 	err := Execute([]string{"echo hello | cat"}, "/bin/sh")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestExecute_StderrConnected(t *testing.T) {
 	// A command writing to stderr should not cause an error by itself.
 	err := Execute([]string{"echo error-output >&2"}, "/bin/sh")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	assert.NoError(t, err)
 }
