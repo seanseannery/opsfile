@@ -144,6 +144,24 @@ func TestParseOpsFlags(t *testing.T) {
 			wantErr:   ErrHelp,
 		},
 		{
+			name:      "--help before -D preserves Directory",
+			input:     []string{"--help", "-D", "/some/path"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
+			name:      "-h before -D preserves Directory",
+			input:     []string{"-h", "-D", "/some/path"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
+			name:      "-? before -D preserves Directory",
+			input:     []string{"-?", "-D", "/some/path"},
+			wantFlags: OpsFlags{Directory: "/some/path"},
+			wantErr:   ErrHelp,
+		},
+		{
 			name:      "-D with empty string value",
 			input:     []string{"-D", "", "prod", "cmd"},
 			wantFlags: OpsFlags{Directory: ""},
