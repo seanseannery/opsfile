@@ -1,8 +1,8 @@
 class Opsfile < Formula
   desc "Like make/Makefile but for live operations commands"
   homepage "https://github.com/seanseannery/opsfile"
-  url "https://github.com/seanseannery/opsfile/archive/refs/tags/v0.8.4.tar.gz"
-  sha256 "3b9a33cf5e93dfe949149a6b58b37579ee280198f48884451fce73769439f8e0"
+  url "https://github.com/seanseannery/opsfile/archive/refs/tags/v0.8.5.tar.gz"
+  sha256 "0a8587c4895fa9d1082a0beb9b52de4005f72bbc88fb3ea923aacc75c48109e2"
   license "MIT"
 
   depends_on "go" => :build
