@@ -64,33 +64,25 @@ Flags:`)
 		fs.PrintDefaults()
 	}
 
-	// -? is not a valid pflag name; strip it before fs.Parse so other flags
-	// (like -D) are still parsed and returned alongside ErrHelp.
-	helpQuestion := false
+	// Strip all help tokens (-h, --help, -?) before fs.Parse so that pflag
+	// does not short-circuit and skip flags that appear after the help flag
+	// (e.g. "--help -D /path" must still parse -D).
+	helpRequested := false
+	filtered := make([]string, 0, len(osArgs))
 	for _, a := range osArgs {
-		if a == "-?" {
-			helpQuestion = true
-			break
+		switch a {
+		case "-h", "--help", "-?":
+			helpRequested = true
+		default:
+			filtered = append(filtered, a)
 		}
-	}
-	if helpQuestion {
-		filtered := make([]string, 0, len(osArgs))
-		for _, a := range osArgs {
-			if a != "-?" {
-				filtered = append(filtered, a)
-			}
-		}
-		osArgs = filtered
 	}
 
-	if err := fs.Parse(osArgs); err != nil {
-		if errors.Is(err, pflag.ErrHelp) {
-			return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, nil, ErrHelp
-		}
+	if err := fs.Parse(filtered); err != nil {
 		return OpsFlags{}, nil, err
 	}
 
-	if helpQuestion {
+	if helpRequested {
 		fs.Usage()
 		return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, nil, ErrHelp
 	}
