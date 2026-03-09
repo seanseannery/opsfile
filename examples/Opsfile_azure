@@ -1,3 +1,11 @@
+# AZURE_SUBSCRIPTION_ID is used by commands below but not defined here —
+# inject it via env-file to keep subscription IDs out of version control:
+#   ops -e .ops_secrets.env prod tail-logs
+#
+# .ops_secrets.env:
+#   prod_AZURE_SUBSCRIPTION_ID=aaaa-bbbb-cccc
+#   staging_AZURE_SUBSCRIPTION_ID=dddd-eeee-ffff
+
 prod_RESOURCE_GROUP=my-service-prod-rg
 staging_RESOURCE_GROUP=my-service-staging-rg
 

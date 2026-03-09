@@ -131,6 +131,7 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         </thead>
         <tbody>
           <tr><td><code>--directory &lt;path&gt;</code></td><td><code>-D &lt;path&gt;</code></td><td>Use the Opsfile in the given directory</td></tr>
+          <tr><td><code>--env-file &lt;path&gt;</code></td><td><code>-e &lt;path&gt;</code></td><td>Load secrets from a <code>.env</code> file (defaults to <code>.ops_secrets.env</code>)</td></tr>
           <tr><td><code>--dry-run</code></td><td><code>-d</code></td><td>Print resolved commands without executing</td></tr>
           <tr><td><code>--list</code></td><td><code>-l</code></td><td>List available commands and environments</td></tr>
           <tr><td><code>--silent</code></td><td><code>-s</code></td><td>Execute commands without printing output</td></tr>
@@ -182,7 +183,7 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         <div class="feature-card">
           <div class="feature-icon">🔒</div>
           <div class="feature-title">Secrets-Safe by Design</div>
-          <p>Reference secrets via environment variables — never commit them.</p>
+          <p>Inject secrets from <code>.env</code> files with <code>-e</code> — never commit them to your Opsfile.</p>
         </div>
       </div>
     </div>
