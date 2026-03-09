@@ -6,7 +6,7 @@ commit_msg=$(cat "$1")
 # Conventional commit pattern:
 # <type>(<optional scope>): <description>
 # Types: feat, fix, docs, refactor, test, chore, ci, perf, build, revert
-pattern='^(feat|fix|docs|refactor|test|chore|ci|perf|build|revert)(\([a-zA-Z0-9_-]+\))?: .+'
+pattern='^(feat|fix|docs|agents|refactor|test|chore|ci|perf|build|revert)(\([a-zA-Z0-9_-]+\))?: .+'
 
 if ! echo "$commit_msg" | grep -qE "$pattern"; then
   echo "  ERROR: commit message does not follow Conventional Commits format."
@@ -14,7 +14,7 @@ if ! echo "$commit_msg" | grep -qE "$pattern"; then
   echo "  Expected: <type>: <description>"
   echo "  Example:  feat: add support for env variables"
   echo ""
-  echo "  Allowed types: feat, fix, docs, refactor, test, chore, ci, perf, build, revert"
+  echo "  Allowed types: feat, fix, agents, docs, refactor, test, chore, ci, perf, build, revert"
   echo ""
   exit 1
 fi
