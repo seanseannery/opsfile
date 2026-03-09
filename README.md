@@ -84,8 +84,35 @@
   > [!TIP] 
   > There are more sample Opsfile examples in the `/examples` folder.
 
-  > [!WARNING] 
-  > Be sure not to include any secrets or access keys into your Opsfile as they could get shared visibly once committed to the repo.  Instead you can inject your secrets into the Opsfile via environment variables if needed.
+  > [!WARNING]
+  > Be sure not to include any secrets or access keys into your Opsfile as they could get shared visibly once committed to the repo.  Instead you can inject your secrets using the `--env-file` flag or environment variables.
+
+  ### Injecting Secrets with `--env-file`
+
+  Use the `-e` / `--env-file` flag to load secrets from a `.env`-format file at invocation time, keeping them out of your Opsfile and version control.
+
+  ```bash
+  # Load secrets from a specific file
+  ops -e .env.prod prod rollback
+
+  # By default, ops auto-loads .ops_secrets.env from the Opsfile directory (silent no-op if absent)
+  ops prod rollback
+  ```
+
+  The env file uses the same `NAME=value` format as Opsfile variables. Env-scoped keys (e.g. `prod_DB_PASSWORD`) are supported. Values can be quoted with single or double quotes, and `#` comments are allowed.
+
+  ```bash
+  # .ops_secrets.env
+  DB_PASSWORD=hunter2
+  prod_API_TOKEN="sk-prod-abc123"
+  staging_API_TOKEN="sk-staging-xyz789"
+  ```
+
+  **Important notes:**
+  - The `-e` flag must appear **before** the environment and command positionals
+  - Only one `-e` per invocation — an explicit `-e` replaces the default `.ops_secrets.env`
+  - Add `.ops_secrets.env` to your `.gitignore`
+  - `--dry-run` will print resolved commands including injected values — be cautious with secrets
 
   ### Step 2: Call the `ops` CLI
 
@@ -96,6 +123,7 @@
     | Flag | Short | Description |
     |------|-------|-------------|
     | `--directory <path>` | `-D <path>` | Use the Opsfile in the given directory instead of searching parent directories |
+    | `--env-file <path>` | `-e <path>` | Load variables from a `.env`-format file (defaults to `.ops_secrets.env` if present) |
     | `--dry-run` | `-d` | Print the resolved commands without executing them |
     | `--silent` | `-s` | Execute commands without printing output |
     | `--list` | `-l` | List available commands and environments defined in the Opsfile, then exit |
