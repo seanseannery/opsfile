@@ -11,16 +11,12 @@ trim = true
 
 [git]
 conventional_commits  = true
-filter_unconventional = false
+filter_unconventional = true
 tag_pattern           = "v[0-9].*"
 
 commit_parsers = [
-  { message = "^feat",     group = "Features"       },
-  { message = "^fix",      group = "Bug Fixes"       },
-  { message = "^docs",     group = "Documentation"   },
-  { message = "^refactor", group = "Refactoring"     },
-  { message = "^test",     group = "Tests"           },
-  { message = "^ci",       group = "CI/CD"           },
-  { message = "^chore",    group = "Chores"          },
-  { message = ".*",        group = "Other"           },
+  { message = "^feat",     group = "Features (feat:*)"       },
+  { message = "^fix",      group = "Bug Fixes (fix:*)"       },
+  { message = "^docs",     group = "Documentation (docs:*)"   },
+  { message = ".*",        group = "Other (*)"           },
 ]

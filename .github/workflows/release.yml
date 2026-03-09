@@ -95,7 +95,6 @@ jobs:
       - name: Upload GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.content }}
