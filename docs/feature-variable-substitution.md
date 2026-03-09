@@ -1,98 +1,240 @@
-# Variable Substitution
+# Feature: Variable Substitution
 
-## Functional Requirements
 
-- `$(VAR_NAME)` tokens in shell lines are replaced with their values from the Opsfile variables
-- Only tokens whose content is a bare identifier (letters, digits, hyphens, underscores) are treated as Opsfile variable references
-- Tokens containing spaces or non-identifier characters (e.g. `$(aws ec2 describe-instances)`) are passed through unchanged, preserving shell subcommand syntax
-- Variable lookup uses environment-scoped priority:
-  1. `env_VAR_NAME` is checked first (e.g. for env `prod` and variable `CLUSTER`, check `prod_CLUSTER`)
-  2. `VAR_NAME` is checked as a fallback (unscoped)
-  3. If neither is defined, an error is returned
-- An unclosed `$(` (no matching `)`) is written through literally as `$(`
+## 1. Problem Statement & High-Level Goals
 
-## Implementation Overview
+### Problem
+Opsfile commands often need to reference configuration values that vary by environment (e.g. cluster names, regions, account IDs). Without variable substitution, users would have to duplicate commands across environments or rely entirely on shell environment variables with inconsistent syntax. Users also need the ability to use shell subcommands like `$(aws sts get-caller-identity)` without `ops` interfering with them.
 
-Variable substitution is implemented in `internal/command_resolver.go` in two functions.
+### Goals
+- [x] Replace `$(VAR_NAME)` tokens in command lines with values from Opsfile-defined variables
+- [x] Support environment-scoped variable resolution (e.g. `prod_CLUSTER` takes precedence over `CLUSTER`)
+- [x] Fall back to shell environment variables when a variable is not defined in the Opsfile
+- [x] Pass through non-identifier `$(...)` tokens unchanged to preserve shell subcommand syntax
 
-**`substituteVars(line, env string, vars OpsVariables) (string, error)`:**
-
-1. Scans `line` for `$(` markers using `strings.Index`
-2. For each `$(...)` token, extracts the content between `$(` and `)`
-3. Calls `isIdentifier(token)` to decide whether this is a variable reference or a shell subcommand
-4. If identifier: calls `resolveVar` to look up the value and writes it to a `strings.Builder`
-5. If not identifier: writes `$(`, the token, and `)` back unchanged
-6. If no closing `)` is found, writes `$(` literally and continues scanning
-
-**`resolveVar(varName, env string, vars OpsVariables) (string, error)`:**
-
-1. Checks `vars[env+"_"+varName]` (scoped lookup)
-2. Falls back to `vars[varName]` (unscoped lookup)
-3. Returns an error if neither key exists
-
-**Key symbols:**
-
-- `substituteVars()` -- per-line substitution engine
-- `resolveVar()` -- env-scoped variable lookup with fallback
-- `isIdentifier()` (from `opsfile_parser.go`) -- shared helper that determines whether a `$(...)` token is a variable reference
+### Non-Goals
+- No support for nested variable references (e.g. `$($(VAR))`)
+- No expression evaluation inside `$(...)` — only bare identifiers are resolved
+- No default/fallback values syntax (e.g. `$(VAR:-default)`)
+- No variable escaping mechanism (e.g. `$$(VAR)` to produce a literal `$(VAR)`)
 
 ---
 
-## Shell Environment Variable Injection
+## 2. Functional Requirements
 
-### Overview
+### FR-1: Variable Reference Syntax
+`$(VAR_NAME)` tokens in shell lines are replaced with their resolved values. Only tokens whose content is a bare identifier (letters, digits, hyphens, underscores) are treated as variable references. Tokens containing spaces or non-identifier characters (e.g. `$(aws ec2 describe-instances)`) are passed through unchanged, preserving shell subcommand syntax.
 
-Shell environment variables (from the user's terminal session) can be referenced in Opsfile command lines using the same `$(VAR_NAME)` syntax already used for Opsfile-defined variables. This matches Makefile behaviour: no new syntax is introduced; environment variable lookup is added as a fallback in the existing resolution chain.
+### FR-2: Four-Level Priority Chain
+Variable lookup uses a four-level priority chain, exhausting env-scoped lookups before falling back to unscoped:
 
-### Functional Requirements
+1. **Opsfile env-scoped** — `vars["env_VAR_NAME"]` (e.g. `prod_CLUSTER`)
+2. **Shell environment env-scoped** — `os.LookupEnv("env_VAR_NAME")` (e.g. `$prod_CLUSTER`)
+3. **Opsfile unscoped** — `vars["VAR_NAME"]` (e.g. `CLUSTER`)
+4. **Shell environment unscoped** — `os.LookupEnv("VAR_NAME")` (e.g. `$CLUSTER`)
 
-- `$(VAR_NAME)` tokens that are valid identifiers are resolved using a four-level priority chain:
-  1. Opsfile env-scoped variable (e.g. `prod_VAR_NAME`)
-  2. Shell environment env-scoped variable (e.g. `os.Getenv("prod_VAR_NAME")`)
-  3. Opsfile unscoped variable (e.g. `VAR_NAME`)
-  4. Shell environment unscoped variable (e.g. `os.Getenv("VAR_NAME")`)
-- If a variable is not found at any level, an error is returned (existing behaviour, unchanged)
-- Shell environment variable lookup is case-sensitive; `$(PATH)` and `$(path)` are distinct
-- Tokens that fail `isIdentifier()` (e.g. `$(aws ec2 describe-instances)`) continue to pass through unchanged — shell subcommand syntax is unaffected
-- The feature is transparent: users do not need to declare which variables come from the environment vs. the Opsfile
+This mirrors Makefile behavior: Opsfile-defined variables override shell environment variables at the same scope level.
 
-### Syntax
+### FR-3: Undefined Variable Error
+If a variable reference cannot be resolved at any of the four priority levels, an error is returned. The error message includes the variable name and the environment being resolved.
 
-Identical to existing Opsfile variable references:
+### FR-4: Unclosed Token Handling
+An unclosed `$(` (no matching `)`) is written through literally as `$(` — no error is raised. This allows partial shell syntax to pass through safely.
 
+### FR-5: Identifier Detection
+A token is considered an identifier if it is non-empty and consists only of letters (`a-z`, `A-Z`), digits (`0-9`), hyphens (`-`), and underscores (`_`). The `isIdentifier()` function in `opsfile_parser.go` implements this check and is shared with the parser.
+
+### Example Usage
+
+**Opsfile with variables and env-scoped overrides:**
 ```
-# Opsfile
+CLUSTER=my-app
+prod_CLUSTER=my-app-prod
+AWS_REGION=us-east-1
 
+tail-logs:
+    default:
+        aws logs tail /ecs/$(CLUSTER) --follow --region $(AWS_REGION)
+    prod:
+        aws logs tail /ecs/$(CLUSTER) --follow --region $(AWS_REGION)
+```
+
+Running `ops prod tail-logs` resolves to:
+```bash
+aws logs tail /ecs/my-app-prod --follow --region us-east-1
+```
+Here `$(CLUSTER)` resolves to `my-app-prod` (Opsfile env-scoped `prod_CLUSTER`) while `$(AWS_REGION)` resolves to `us-east-1` (Opsfile unscoped).
+
+**Shell environment fallback:**
+```
 deploy:
     default:
         aws s3 cp ./dist s3://$(BUCKET)/$(APP_VERSION) --region $(AWS_REGION)
 ```
+If `BUCKET` is defined in the Opsfile but `APP_VERSION` and `AWS_REGION` are not, they are resolved from the shell environment (`$APP_VERSION`, `$AWS_REGION`).
 
-If `BUCKET` is defined in the Opsfile and `APP_VERSION` is not, `APP_VERSION` is resolved from the shell environment. `AWS_REGION` follows the same fallback chain.
+**Shell subcommand passthrough:**
+```
+show-caller:
+    default:
+        echo "Caller: $(aws sts get-caller-identity --query Account --output text)"
+```
+The `$(aws sts ...)` token contains spaces, so `isIdentifier()` returns false and the token passes through unchanged for the shell to evaluate.
 
-### Priority Behaviour (Makefile-Compatible)
+---
 
-Makefiles treat environment variables as the lowest-priority source: a variable defined in the Makefile overrides an environment variable of the same name. `opsfile` mirrors this:
+## 3. Non-Functional Requirements
 
-| Source | Priority |
-|---|---|
-| Opsfile env-scoped (`prod_VAR`) | 1 (highest) |
-| Shell environment env-scoped (`$prod_VAR`) | 2 |
-| Opsfile unscoped (`VAR`) | 3 |
-| Shell environment unscoped (`$VAR`) | 4 (lowest) |
+| ID | Category | Requirement | Notes |
+|----|----------|-------------|-------|
+| NFR-1 | Performance | Variable substitution is O(n) per line where n is line length | Single-pass scan using `strings.Index` |
+| NFR-2 | Compatibility | Shell environment lookup is case-sensitive | Matches POSIX behavior; `$(PATH)` and `$(path)` are distinct |
+| NFR-3 | Reliability | Undefined variables produce clear error messages with variable name and environment | Prevents silent misconfiguration |
+| NFR-4 | Compatibility | Shell subcommand syntax is never modified | `isIdentifier()` filter ensures only bare identifiers are resolved |
+| NFR-5 | Maintainability | Substitution logic is isolated in `command_resolver.go` | Single file to modify for resolution behavior changes |
 
-Env-scoped lookups (Opsfile then shell) are exhausted before falling back to unscoped lookups, so a `prod_`-prefixed shell variable takes precedence over an unscoped Opsfile definition.
+---
 
-### Implementation Overview
+## 4. Architecture & Implementation Proposal
 
-The only change required is in `internal/command_resolver.go` in `resolveVar`.
+### Overview
+Variable substitution is implemented in `internal/command_resolver.go` as part of the command resolution pipeline. After environment selection picks the correct shell lines for the requested environment, each line is scanned for `$(...)` tokens and resolved against the four-level variable priority chain. The `Resolve()` function orchestrates both environment selection and variable substitution.
 
-**Updated `resolveVar(varName, env string, vars OpsVariables) (string, error)`:**
+### Component Design
 
-1. Checks `vars[env+"_"+varName]` (env-scoped Opsfile variable) — returns value if found
-2. Calls `os.Getenv(env+"_"+varName)` (env-scoped shell variable) — returns value if set
-3. Checks `vars[varName]` (unscoped Opsfile variable) — returns value if found
-4. Calls `os.Getenv(varName)` (unscoped shell variable) — returns value if set
-5. Returns an error if all four lookups fail
+**`Resolve(commandName, env, commands, vars)`** — Public entry point. Looks up the command by name, calls `selectLines()` for environment selection, then iterates each line through `substituteVars()`.
 
-No changes to `substituteVars`, `isIdentifier`, or any other part of the resolution pipeline.
+**`selectLines(cmd, env)`** — Selects shell lines for the given environment, falling back to the `default` block if the specific environment isn't defined. Returns an error if neither exists.
+
+**`substituteVars(line, env, vars)`** — Scans a single line for `$(...)` tokens. For each token, checks `isIdentifier()` to determine if it's a variable reference or a shell subcommand. Variable references are resolved via `resolveVar()`; non-identifiers are passed through unchanged.
+
+**`resolveVar(varName, env, vars)`** — Implements the four-level priority chain: Opsfile env-scoped → shell env-scoped → Opsfile unscoped → shell unscoped. Returns the first match or an error.
+
+**`isIdentifier(s)`** (in `opsfile_parser.go`) — Returns true if the string is non-empty and contains only identifier characters (letters, digits, hyphens, underscores). Shared between the parser and resolver.
+
+### Data Flow
+```
+Resolve(commandName, env, commands, vars)
+  -> selectLines(cmd, env) -> []string (raw shell lines)
+  -> for each line:
+       substituteVars(line, env, vars)
+         -> scan for "$(" markers
+         -> extract token between "$(" and ")"
+         -> isIdentifier(token)?
+              yes -> resolveVar(token, env, vars) -> substituted value
+              no  -> pass through "$(token)" unchanged
+  -> ResolvedCommand{Lines: resolved}
+```
+
+#### Sequence Diagram
+```
+main.go -> command_resolver.go: Resolve(cmdName, env, commands, vars)
+command_resolver.go -> command_resolver.go: selectLines(cmd, env)
+  alt exact env match
+    return lines for env
+  else fallback
+    return lines for "default"
+  else no match
+    return error
+  end
+
+loop each line
+  command_resolver.go -> command_resolver.go: substituteVars(line, env, vars)
+  loop each "$(" token
+    command_resolver.go -> opsfile_parser.go: isIdentifier(token)
+    alt is identifier
+      command_resolver.go -> command_resolver.go: resolveVar(token, env, vars)
+      alt Opsfile env-scoped found
+        return value
+      else shell env-scoped found
+        return os.LookupEnv(env_VAR)
+      else Opsfile unscoped found
+        return value
+      else shell unscoped found
+        return os.LookupEnv(VAR)
+      else not found
+        return error
+      end
+    else not identifier
+      pass through unchanged
+    end
+  end
+end
+command_resolver.go --> main.go: ResolvedCommand{Lines}
+```
+
+### Key Design Decisions
+- **`strings.Index` scanning over regex:** A simple index-based scan is more readable, faster, and avoids regex compilation overhead. The `$(...)` syntax is straightforward enough that regex is unnecessary.
+- **Shared `isIdentifier()` function:** Rather than duplicating identifier-checking logic, the resolver imports the same function used by the parser. This ensures consistent behavior for what constitutes a valid variable name.
+- **Four-level priority chain:** Modeled after Makefile behavior where file-defined variables override environment variables. The env-scoped layer is exhausted before falling back to unscoped, so `prod_VAR` in the shell environment takes precedence over an unscoped `VAR` in the Opsfile.
+- **`os.LookupEnv` over `os.Getenv`:** `LookupEnv` distinguishes between an unset variable and one set to an empty string, which is important for correct fallback behavior.
+- **Error on undefined:** Rather than silently passing through undefined variables (which could lead to broken commands), an explicit error is returned. This catches typos and missing configuration early.
+
+### Files to Create / Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| `internal/command_resolver.go` | Exists | `Resolve()`, `selectLines()`, `substituteVars()`, `resolveVar()` |
+| `internal/opsfile_parser.go` | Exists | `isIdentifier()` and `isIdentChar()` shared helpers |
+| `internal/command_resolver_test.go` | Exists | Tests for substitution, resolution priority, error cases |
+
+---
+
+## 5. Alternatives Considered
+
+### Alternative A: Regex-Based Substitution
+
+**Description:** Use `regexp.ReplaceAllStringFunc` with a pattern like `\$\(([^)]+)\)` to find and replace variable references.
+
+**Pros:**
+- More concise replacement logic
+- Well-understood pattern matching
+
+**Cons:**
+- Regex compilation overhead on every line
+- Harder to handle the identifier vs. non-identifier distinction cleanly
+- Less readable for Go developers unfamiliar with the regex
+
+**Why not chosen:** The index-based scan is simpler, faster, and makes the identifier check explicit. The `$(...)` syntax is simple enough that regex adds complexity without benefit.
+
+### Alternative B: Go `text/template` Syntax
+
+**Description:** Use Go's template syntax (`{{ .VAR }}`) instead of `$(VAR)`.
+
+**Pros:**
+- Built-in template engine with rich features
+- No custom parser needed
+
+**Cons:**
+- Conflicts with shell syntax expectations — users expect `$(...)` from Makefile/shell familiarity
+- Would require escaping `$()` in shell subcommands
+- Template errors are harder to understand for ops users
+
+**Why not chosen:** The `$(VAR)` syntax is familiar to Makefile and shell users, which is the target audience. Using Go templates would add cognitive overhead and break the Makefile-like mental model.
+
+---
+
+## Open Questions
+- [x] All current open questions resolved — feature is fully implemented
+
+---
+
+## 6. Task Breakdown
+
+### Phase 1: Foundation (completed)
+- [x] Implement `substituteVars()` with `$(...)` token scanning
+- [x] Implement `isIdentifier()` to distinguish variable refs from shell subcommands
+- [x] Implement `resolveVar()` with Opsfile-only lookup (env-scoped then unscoped)
+- [x] Write unit tests for substitution and identifier detection
+
+### Phase 2: Shell Environment Integration (completed)
+- [x] Extend `resolveVar()` with `os.LookupEnv` fallback at both scoped and unscoped levels
+- [x] Implement four-level priority chain
+- [x] Write tests for shell environment variable resolution and priority ordering
+
+### Phase 3: Polish (completed)
+- [x] Handle edge cases: unclosed `$(`, empty tokens, non-identifier tokens
+- [x] Ensure error messages include variable name and environment context
+- [x] Update documentation
+
+---

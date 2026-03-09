@@ -25,6 +25,7 @@
     ├── install/              Curl-pipe shell installer script for end-users
     ├── bin/                  Compiled binary output (gitignored)
     ├── docs/                 Feature requirements and implementation/architecture documentation
+    ├────── templates/        Markdown templates for feature docs, etc.
     ├────── testplans/        Test plans for each feature (manual and automated)
     ├────── site/             GitHub Pages static landing page (HTML + CSS) — deployed by pages.yml
     ├── .github/              Github Actions and PR/Issue templates
