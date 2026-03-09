@@ -58,15 +58,18 @@ prod_API_KEY='sk-...'
 Opsfile and shell environment variables always take precedence over env-file values — the flag is purely additive.
 
 ### FR-4: Security / UX
-- Values injected from env-file are **never printed** to stdout or stderr by `ops` itself.
-- `--dry-run` resolves variable references (including those from env-file) and prints the resulting shell lines. The `--help` output must note that injected secret values are visible in `--dry-run` output.
+- Values are not printed outside of `--dry-run`; `ops` never echoes raw env-file contents to stdout or stderr.
+- `--dry-run` resolves all variable references — including those sourced from env-file — and prints the resulting shell lines. Secret values will therefore be visible in `--dry-run` output. The `--help` text must include a note to this effect.
+
+### FR-5: Flag Position Constraint
+Because `SetInterspersed(false)` stops flag parsing at the first positional argument, `-e` flags must appear **before** the environment and command positionals. `ops prod -e .env cmd` will silently ignore `-e .env`. The `--help` output must document this constraint to prevent unexpected "variable not defined" errors.
 
 ### Example Usage
 
 ```bash
 ops -e .env.prod prod rollback
 ops --env-file ~/.secrets/prod.env prod tail-logs
-ops -e .env prod -e .env.local prod tail-logs   # multiple files, last wins on conflict
+ops -e .env -e .env.local prod tail-logs         # multiple files, last wins on conflict
 ```
 
 `.env.prod`:
@@ -94,7 +97,7 @@ rollback:
 |----|----------|-------------|-------|
 | NFR-1 | Performance | Env-file parsing adds no perceptible latency | Files are small; single-pass scan |
 | NFR-2 | Compatibility | Linux, macOS (same platforms as existing binary) | No platform-specific I/O |
-| NFR-3 | Reliability | Missing or unreadable file fails before execution | Error message includes file path |
+| NFR-3 | Reliability | Missing or unreadable file fails before execution | Error format: `env-file "<path>": <os error>` |
 | NFR-4 | Security | File contents never echoed to stdout/stderr | Only resolved variable values reach shell lines |
 | NFR-5 | Maintainability | No new external dependencies | Reuse `extractVariableValue`/`indexComment` |
 | NFR-6 | Test Coverage | Coverage must not decrease | All acceptance criteria have unit tests |
@@ -115,7 +118,7 @@ The implementation touches three existing files and adds one new file. The key p
 
 **`internal/command_resolver.go`** — extend `Resolve` and `resolveVar` to accept `envFileVars OpsVariables` and consult it at priority levels 3 and 6.
 
-**`cmd/ops/main.go`** — after flag parsing, call `internal.ParseEnvFiles(flags.EnvFiles)` and pass the result to `internal.Resolve`.
+**`cmd/ops/main.go`** — after flag parsing, call `internal.ParseEnvFiles(flags.EnvFiles)` if `len(flags.EnvFiles) > 0` (skip entirely when the flag is not used to avoid allocating an empty map), and pass the result to `internal.Resolve`.
 
 ### Data Flow
 
@@ -184,7 +187,7 @@ main()
 | `internal/envfile_parser.go` | Create | `ParseEnvFiles(paths []string) (OpsVariables, error)` — single-pass line scanner, reuses `extractVariableValue` |
 | `internal/envfile_parser_test.go` | Create | Unit tests: single file, multiple files, quoting, comments, env-scoped keys, error cases |
 | `internal/command_resolver.go` | Modify | Add `envFileVars OpsVariables` param to `Resolve`, `substituteVars`, `resolveVar`; add priority 3 and 6 lookups |
-| `internal/command_resolver_test.go` | Modify | Add tests for env-file priority levels 3 and 6 |
+| `internal/command_resolver_test.go` | Modify | Add tests for env-file priority levels 3 and 6; rename existing `TestResolveVar_PriorityChain` subtests from "level1–level4" to "p1–p4" to avoid collision with the new 6-level numbering |
 | `internal/flag_parser_test.go` | Modify | Add tests: single and multiple `-e` flags populate `EnvFiles` in order |
 | `cmd/ops/main.go` | Modify | Call `ParseEnvFiles` after flag parsing; pass `envFileVars` to `Resolve` |
 
@@ -225,7 +228,7 @@ main()
 ---
 
 ## Open Questions
-- [ ] Should an empty `EnvFiles` slice (flag not provided) skip `ParseEnvFiles` entirely, or call it with an empty slice (no-op)? Proposed: skip entirely in `main.go` to avoid allocating an empty map.
+None — all questions resolved.
 
 ---
 
@@ -244,5 +247,5 @@ main()
 - [ ] Add flag-parser tests for `-e` / `--env-file`
 
 ### Phase 3: Polish
-- [ ] Confirm `--help` output notes `--dry-run` secret visibility
+- [ ] Confirm `--help` output notes `--dry-run` secret visibility and flag-position constraint
 - [ ] Update `AGENTS.md` directory structure if new files added
