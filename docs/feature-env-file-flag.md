@@ -28,7 +28,7 @@ Related: [Issue #23](https://github.com/seanseannery/opsfile/issues/23)
 ## 2. Functional Requirements
 
 ### FR-1: Flag Parsing
-`-e <path>` and `--env-file <path>` are equivalent. The flag may be specified multiple times; all paths are collected in order into `OpsFlags.EnvFiles []string`. An unknown or missing path produces a clear error **before** any command executes.
+`-e <path>` and `--env-file <path>` are equivalent. The flag may be specified **at most once**; the path is stored in `OpsFlags.EnvFile string`. Specifying `-e` more than once is an error. An unknown or missing path produces a clear error **before** any command executes.
 
 ### FR-2: File Format
 Standard `.env` syntax:
@@ -43,7 +43,7 @@ prod_API_KEY='sk-...'
 - Blank lines are skipped.
 - A `=value` line with no name (empty name) is a parse error with line number.
 - Env-scoped names (`prod_VAR`) are supported and follow the same resolution priority as Opsfile variables.
-- When multiple `-e` flags are given, files are processed in order; later files override earlier files **within the env-file layer only**.
+- Only one env-file may be specified per invocation.
 
 ### FR-3: Resolution Priority Chain (Updated)
 
@@ -68,7 +68,7 @@ Shell environment always wins — a value exported in the operator's shell overr
 
 If no `-e` / `--env-file` flag is provided, `ops` automatically looks for `.ops_secrets.env` in the same directory as the located Opsfile. If the file exists, it is loaded as the env-file layer exactly as if `-e .ops_secrets.env` had been passed.
 
-If one or more `-e` flags **are** provided, the explicit file(s) are used and `.ops_secrets.env` is **not** loaded — explicit flags replace the default, they do not stack with it.
+If a `-e` flag **is** provided, that file is used and `.ops_secrets.env` is **not** loaded — the explicit flag replaces the default, it does not stack with it.
 
 ```bash
 # No -e flag: loads .ops_secrets.env if present (silently skipped if absent)
@@ -88,7 +88,6 @@ Because `SetInterspersed(false)` stops flag parsing at the first positional argu
 ```bash
 ops -e .env.prod prod rollback
 ops --env-file ~/.secrets/prod.env prod tail-logs
-ops -e .env -e .env.local prod tail-logs         # multiple files, last wins on conflict
 ```
 
 `.env.prod`:
@@ -131,9 +130,9 @@ The implementation touches three existing files and adds one new file. The key p
 
 ### Component Design
 
-**`internal/flag_parser.go`** — add `EnvFiles []string` to `OpsFlags` and register `-e`/`--env-file` as a repeatable `StringArray` flag.
+**`internal/flag_parser.go`** — add `EnvFile string` to `OpsFlags` and register `-e`/`--env-file` as a single-value `StringP` flag.
 
-**`internal/envfile_parser.go`** (new) — `ParseEnvFiles(paths []string) (OpsVariables, error)` reads each file in order, parses `NAME=value` lines using `extractVariableValue`, and merges results (later paths override earlier for the same key).
+**`internal/envfile_parser.go`** (new) — `ParseEnvFile(path string) (OpsVariables, error)` reads the file, parses `NAME=value` lines using `extractVariableValue`, and returns the variable map.
 
 **`internal/command_resolver.go`** — extend `Resolve` and `resolveVar` to accept `envFileVars OpsVariables` and consult it at priority levels 3 and 6.
 
@@ -145,9 +144,9 @@ The implementation touches three existing files and adds one new file. The key p
 os.Args
   │
   ▼
-ParseOpsFlags()          ← adds EnvFiles []string
+ParseOpsFlags()          ← adds EnvFile string
   │
-  ├─ flags.EnvFiles ──► ParseEnvFiles() ──► envFileVars OpsVariables
+  ├─ flags.EnvFile ──► ParseEnvFile() ──► envFileVars OpsVariables
   │
   ▼
 ParseOpsFile()           ← unchanged, produces vars OpsVariables
@@ -170,15 +169,15 @@ Resolve(cmd, env, commands, vars, envFileVars)
 main()
   │ ParseOpsFlags(os.Args[1:])
   │──────────────────────────► flag_parser.go
-  │◄── OpsFlags{EnvFiles: [...]}
+  │◄── OpsFlags{EnvFile: "..."}
   │
-  │ [resolve env-file paths]
-  │ if len(flags.EnvFiles) > 0: use flags.EnvFiles
+  │ [resolve env-file path]
+  │ if flags.EnvFile != "": use it
   │ else: check for .ops_secrets.env next to Opsfile
-  │ ParseEnvFiles(paths)
+  │ ParseEnvFile(path)
   │──────────────────────────► envfile_parser.go
   │◄── envFileVars, err
-  │    [error if file missing/unreadable; .ops_secrets.env absence is silent]
+  │    [error if explicit file missing/unreadable; .ops_secrets.env absence is silent]
   │
   │ ParseOpsFile(path)
   │──────────────────────────► opsfile_parser.go
@@ -206,13 +205,13 @@ main()
 
 | File | Action | Description |
 |------|--------|-------------|
-| `internal/flag_parser.go` | Modify | Add `EnvFiles []string` to `OpsFlags`; register `-e`/`--env-file` flag; update help text to note `--dry-run` visibility |
-| `internal/envfile_parser.go` | Create | `ParseEnvFiles(paths []string) (OpsVariables, error)` — single-pass line scanner, reuses `extractVariableValue` |
-| `internal/envfile_parser_test.go` | Create | Unit tests: single file, multiple files, quoting, comments, env-scoped keys, error cases |
-| `internal/command_resolver.go` | Modify | Add `envFileVars OpsVariables` param to `Resolve`, `substituteVars`, `resolveVar`; add priority 3 and 6 lookups |
+| `internal/flag_parser.go` | Modify | Add `EnvFile string` to `OpsFlags`; register `-e`/`--env-file` as single-value `StringP` flag; update help text to note `--dry-run` visibility and flag-position constraint |
+| `internal/envfile_parser.go` | Create | `ParseEnvFile(path string) (OpsVariables, error)` — single-pass line scanner, reuses `extractVariableValue` |
+| `internal/envfile_parser_test.go` | Create | Unit tests: single file, quoting, comments, env-scoped keys, error cases |
+| `internal/command_resolver.go` | Modify | Add `envFileVars OpsVariables` param to `Resolve`, `substituteVars`, `resolveVar`; swap priority so shell env-scoped is #1; add env-file at levels 3 and 6 |
 | `internal/command_resolver_test.go` | Modify | Add tests for env-file priority levels 3 and 6; rename existing `TestResolveVar_PriorityChain` subtests from "level1–level4" to "p1–p4" to avoid collision with the new 6-level numbering |
-| `internal/flag_parser_test.go` | Modify | Add tests: single and multiple `-e` flags populate `EnvFiles` in order |
-| `cmd/ops/main.go` | Modify | Resolve env-file paths (explicit `-e` or default `.ops_secrets.env`); call `ParseEnvFiles`; pass `envFileVars` to `Resolve`; update `resolveVar` priority order |
+| `internal/flag_parser_test.go` | Modify | Add tests: `-e` flag sets `EnvFile`; specifying `-e` twice is an error |
+| `cmd/ops/main.go` | Modify | Resolve env-file path (explicit `-e` or default `.ops_secrets.env`); call `ParseEnvFile`; pass `envFileVars` to `Resolve` |
 
 ---
 
@@ -258,9 +257,9 @@ None — all questions resolved.
 ## 6. Task Breakdown
 
 ### Phase 1: Foundation
-- [ ] Add `EnvFiles []string` to `OpsFlags` in `flag_parser.go`
-- [ ] Register `-e`/`--env-file` as a repeatable `StringArrayP` flag; update `--help` text
-- [ ] Write `ParseEnvFiles` in `internal/envfile_parser.go`
+- [ ] Add `EnvFile string` to `OpsFlags` in `flag_parser.go`
+- [ ] Register `-e`/`--env-file` as a single-value `StringP` flag; update `--help` text
+- [ ] Write `ParseEnvFile` in `internal/envfile_parser.go`
 - [ ] Write unit tests in `internal/envfile_parser_test.go`
 
 ### Phase 2: Integration
