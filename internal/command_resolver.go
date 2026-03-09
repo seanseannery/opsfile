@@ -6,10 +6,18 @@ import (
 	"strings"
 )
 
+// ResolvedLine holds a single shell line after resolution, with per-line
+// metadata. Silent is true when the original Opsfile line had a leading @
+// prefix, indicating that the executor should not echo it before running.
+type ResolvedLine struct {
+	Text   string
+	Silent bool
+}
+
 // ResolvedCommand holds the shell lines for a command after environment
 // selection and variable substitution.
 type ResolvedCommand struct {
-	Lines []string
+	Lines []ResolvedLine
 }
 
 // Resolve selects the correct environment block for commandName and substitutes
@@ -35,13 +43,18 @@ func Resolve(commandName, env string, commands map[string]OpsCommand, vars OpsVa
 		return ResolvedCommand{}, err
 	}
 
-	lines := make([]string, 0, len(raw))
+	lines := make([]ResolvedLine, 0, len(raw))
 	for _, line := range raw {
+		silent := false
+		if strings.HasPrefix(line, "@") {
+			silent = true
+			line = line[1:]
+		}
 		substituted, err := substituteVars(line, env, vars)
 		if err != nil {
 			return ResolvedCommand{}, err
 		}
-		lines = append(lines, substituted)
+		lines = append(lines, ResolvedLine{Text: substituted, Silent: silent})
 	}
 	return ResolvedCommand{Lines: lines}, nil
 }

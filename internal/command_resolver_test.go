@@ -16,6 +16,15 @@ func parseFixture(t *testing.T, content string) (OpsVariables, map[string]OpsCom
 	return vars, commands
 }
 
+// lineTexts extracts the Text field from each ResolvedLine for easy comparison.
+func lineTexts(rc ResolvedCommand) []string {
+	out := make([]string, len(rc.Lines))
+	for i, l := range rc.Lines {
+		out[i] = l.Text
+	}
+	return out
+}
+
 func TestResolve_ExactEnvMatch(t *testing.T) {
 	vars, commands := parseFixture(t, `
 list-instance-ips:
@@ -28,7 +37,7 @@ list-instance-ips:
 	got, err := Resolve("list-instance-ips", "prod", commands, vars)
 	require.NoError(t, err)
 	want := []string{`aws ec2 --list-instances`, `echo "done"`}
-	assert.Equal(t, want, got.Lines)
+	assert.Equal(t, want, lineTexts(got))
 }
 
 func TestResolve_EmptyCommandsMap(t *testing.T) {
@@ -60,7 +69,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo hello world", got.Lines[0])
+	assert.Equal(t, "echo hello world", got.Lines[0].Text)
 }
 
 func TestResolve_VariableUsedMultipleTimes(t *testing.T) {
@@ -73,7 +82,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo val and val", got.Lines[0])
+	assert.Equal(t, "echo val and val", got.Lines[0].Text)
 }
 
 func TestResolve_UnclosedDollarParen(t *testing.T) {
@@ -85,7 +94,7 @@ func TestResolve_UnclosedDollarParen(t *testing.T) {
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo $(incomplete", got.Lines[0])
+	assert.Equal(t, "echo $(incomplete", got.Lines[0].Text)
 }
 
 func TestResolve_MixedIdentifierAndNonIdentifier(t *testing.T) {
@@ -98,7 +107,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "hello $(shell cmd)", got.Lines[0])
+	assert.Equal(t, "hello $(shell cmd)", got.Lines[0].Text)
 }
 
 func TestResolve_DefaultFallbackVariableScoping(t *testing.T) {
@@ -112,7 +121,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo prod-acct", got.Lines[0])
+	assert.Equal(t, "echo prod-acct", got.Lines[0].Text)
 }
 
 func TestResolve_SameVarReferencedTwice(t *testing.T) {
@@ -125,7 +134,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "x x", got.Lines[0])
+	assert.Equal(t, "x x", got.Lines[0].Text)
 }
 
 func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
@@ -137,7 +146,7 @@ func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo $(", got.Lines[0])
+	assert.Equal(t, "echo $(", got.Lines[0].Text)
 }
 
 func TestResolve_EmptyToken(t *testing.T) {
@@ -149,7 +158,7 @@ func TestResolve_EmptyToken(t *testing.T) {
 	vars := OpsVariables{}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo $()", got.Lines[0])
+	assert.Equal(t, "echo $()", got.Lines[0].Text)
 }
 
 func TestResolve_ScopedLookupPriority(t *testing.T) {
@@ -164,7 +173,7 @@ func TestResolve_ScopedLookupPriority(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo prod.example.com", got.Lines[0])
+	assert.Equal(t, "echo prod.example.com", got.Lines[0].Text)
 }
 
 func TestResolve_UnscopedFallbackDirect(t *testing.T) {
@@ -178,7 +187,7 @@ func TestResolve_UnscopedFallbackDirect(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo default.example.com", got.Lines[0])
+	assert.Equal(t, "echo default.example.com", got.Lines[0].Text)
 }
 
 func TestResolve_MissingVariableReturnsError(t *testing.T) {
@@ -204,7 +213,7 @@ tail-logs:
 	got, err := Resolve("tail-logs", "prod", commands, vars)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
-	assert.Equal(t, "aws cloudwatch logs --tail 1234567", got.Lines[0])
+	assert.Equal(t, "aws cloudwatch logs --tail 1234567", got.Lines[0].Text)
 }
 
 func TestResolve_LocalOverridesDefault(t *testing.T) {
@@ -218,7 +227,7 @@ tail-logs:
 	got, err := Resolve("tail-logs", "local", commands, vars)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
-	assert.Equal(t, "docker logs myapp --follow", got.Lines[0])
+	assert.Equal(t, "docker logs myapp --follow", got.Lines[0].Text)
 }
 
 func TestResolve_ScopedPriority(t *testing.T) {
@@ -232,7 +241,7 @@ tail-logs:
 `)
 	got, err := Resolve("tail-logs", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo scoped", got.Lines[0])
+	assert.Equal(t, "echo scoped", got.Lines[0].Text)
 }
 
 func TestResolve_UnscopedFallback(t *testing.T) {
@@ -245,7 +254,7 @@ tail-logs:
 `)
 	got, err := Resolve("tail-logs", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo unscoped", got.Lines[0])
+	assert.Equal(t, "echo unscoped", got.Lines[0].Text)
 }
 
 func TestResolve_CommandNotFound(t *testing.T) {
@@ -289,7 +298,7 @@ my-cmd:
 `)
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0])
+	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0].Text)
 }
 
 func TestResolve_MultiLineCommand(t *testing.T) {
@@ -308,7 +317,7 @@ deploy:
 		"aws ecs describe-clusters --cluster my-cluster --region us-east-1",
 		`echo "done in us-east-1"`,
 	}
-	assert.Equal(t, want, got.Lines)
+	assert.Equal(t, want, lineTexts(got))
 }
 
 // --- Shell environment variable injection tests ---
@@ -322,7 +331,7 @@ func TestResolveVar_UnscopedShellEnvFallback(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.NoError(t, err)
-	assert.Equal(t, "echo from-shell", got.Lines[0])
+	assert.Equal(t, "echo from-shell", got.Lines[0].Text)
 }
 
 func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
@@ -334,7 +343,7 @@ func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.NoError(t, err)
-	assert.Equal(t, "echo shell-scoped", got.Lines[0])
+	assert.Equal(t, "echo shell-scoped", got.Lines[0].Text)
 }
 
 func TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped(t *testing.T) {
@@ -347,7 +356,7 @@ func TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped(t *testing.T) {
 	vars := OpsVariables{"prod_VAR": "opsfile-scoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo opsfile-scoped", got.Lines[0])
+	assert.Equal(t, "echo opsfile-scoped", got.Lines[0].Text)
 }
 
 func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
@@ -360,7 +369,7 @@ func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo shell-scoped", got.Lines[0])
+	assert.Equal(t, "echo shell-scoped", got.Lines[0].Text)
 }
 
 func TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped(t *testing.T) {
@@ -373,7 +382,7 @@ func TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped(t *testing.T) {
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo opsfile-unscoped", got.Lines[0])
+	assert.Equal(t, "echo opsfile-unscoped", got.Lines[0].Text)
 }
 
 func TestResolveVar_ShellEnvUnscopedIsLastResort(t *testing.T) {
@@ -385,7 +394,7 @@ func TestResolveVar_ShellEnvUnscopedIsLastResort(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.NoError(t, err)
-	assert.Equal(t, "echo shell-unscoped", got.Lines[0])
+	assert.Equal(t, "echo shell-unscoped", got.Lines[0].Text)
 }
 
 func TestResolveVar_PriorityChain(t *testing.T) {
@@ -432,7 +441,7 @@ func TestResolveVar_PriorityChain(t *testing.T) {
 			}
 			got, err := Resolve("my-cmd", "prod", commands, tc.opsfileVars)
 			require.NoError(t, err)
-			assert.Equal(t, "echo "+tc.want, got.Lines[0])
+			assert.Equal(t, "echo "+tc.want, got.Lines[0].Text)
 		})
 	}
 }
@@ -447,7 +456,7 @@ func TestResolveVar_MixedSources(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, vars)
 	require.NoError(t, err)
-	assert.Equal(t, "echo from-opsfile from-shell", got.Lines[0])
+	assert.Equal(t, "echo from-opsfile from-shell", got.Lines[0].Text)
 }
 
 func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
@@ -459,7 +468,7 @@ func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.NoError(t, err)
-	assert.Equal(t, "echo ", got.Lines[0])
+	assert.Equal(t, "echo ", got.Lines[0].Text)
 }
 
 func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
@@ -471,7 +480,7 @@ func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
 	}
 	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.NoError(t, err)
-	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0])
+	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0].Text)
 }
 
 func TestResolveVar_AbsentFromAllSources(t *testing.T) {
@@ -483,4 +492,265 @@ func TestResolveVar_AbsentFromAllSources(t *testing.T) {
 	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
+}
+
+// --- @ prefix tests ---
+
+func TestResolve_AtPrefixStripped(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_NoAtPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_MixedAtAndNonAt(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@echo setup", "aws deploy", "@echo cleanup"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 3)
+	assert.Equal(t, "echo setup", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+	assert.Equal(t, "aws deploy", got.Lines[1].Text)
+	assert.False(t, got.Lines[1].Silent)
+	assert.Equal(t, "echo cleanup", got.Lines[2].Text)
+	assert.True(t, got.Lines[2].Silent)
+}
+
+func TestResolve_AtPrefixWithVariable(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=hello
+
+my-cmd:
+    default:
+        @echo $(VAR)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixWithScopedVariable(t *testing.T) {
+	vars, commands := parseFixture(t, `
+prod_ACCT=123
+
+my-cmd:
+    default:
+        @echo $(ACCT)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo 123", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixWithBackslashContinuation(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        @aws logs \
+            --follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixWithIndentContinuation(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        @aws logs
+            --follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DoubleAtPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@@echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "@echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixOnly(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtInMiddleOfLine(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo user@host.com"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo user@host.com", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtInVariableValue(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=user@host
+
+my-cmd:
+    default:
+        echo $(VAR)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	assert.Equal(t, "echo user@host", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixNonIdentifierPassthrough(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@$(shell cmd)"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "$(shell cmd)", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixMissingVariable(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@echo $(MISSING)"},
+		}},
+	}
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
+}
+
+func TestResolve_MultiLineMixedAt(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        @echo setup
+        echo deploy
+        @echo cleanup
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 3)
+
+	wantTexts := []string{"echo setup", "echo deploy", "echo cleanup"}
+	wantSilent := []bool{true, false, true}
+	assert.Equal(t, wantTexts, lineTexts(got))
+	for i, line := range got.Lines {
+		assert.Equal(t, wantSilent[i], line.Silent, "line %d Silent", i)
+	}
+}
+
+func TestResolve_AtPrefixBackslashTrailingEOF(t *testing.T) {
+	content := `
+my-cmd:
+    prod:
+        @aws logs \`
+	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	require.NoError(t, err)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs ", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtOnContinuationFragment(t *testing.T) {
+	// @ on a non-first continuation fragment is part of the joined shell text,
+	// not Opsfile syntax (per FR-5).
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        aws logs \
+            @--follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs @--follow", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtPrefixWhitespaceOnlyAfter(t *testing.T) {
+	// @ followed by only whitespace — silent flag set, text is the whitespace.
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@   "},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "   ", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_ExistingTestsNoSilent(t *testing.T) {
+	// Verify that existing commands without @ have Silent=false
+	vars, commands := parseFixture(t, `
+REGION=us-east-1
+
+deploy:
+    prod:
+        aws ecs update --region $(REGION)
+        echo done
+`)
+	got, err := Resolve("deploy", "prod", commands, vars)
+	require.NoError(t, err)
+	for i, line := range got.Lines {
+		assert.False(t, line.Silent, "line %d should not be silent", i)
+	}
 }

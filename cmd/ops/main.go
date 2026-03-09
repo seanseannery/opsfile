@@ -83,7 +83,7 @@ func main() {
 	if flags.DryRun {
 		if !flags.Silent {
 			for _, line := range resolved.Lines {
-				fmt.Println(line)
+				fmt.Println(line.Text)
 			}
 		}
 		return
@@ -94,7 +94,7 @@ func main() {
 		shell = "/bin/sh"
 	}
 
-	if err := internal.Execute(resolved.Lines, shell); err != nil {
+	if err := internal.Execute(resolved.Lines, shell, flags.Silent, os.Stderr); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.ExitCode())
