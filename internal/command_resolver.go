@@ -9,9 +9,12 @@ import (
 // ResolvedLine holds a single shell line after resolution, with per-line
 // metadata. Silent is true when the original Opsfile line had a leading @
 // prefix, indicating that the executor should not echo it before running.
+// IgnoreError is true when the original Opsfile line had a leading - prefix,
+// indicating that the executor should ignore non-zero exit codes for this line.
 type ResolvedLine struct {
-	Text   string
-	Silent bool
+	Text        string
+	Silent      bool
+	IgnoreError bool
 }
 
 // ResolvedCommand holds the shell lines for a command after environment
@@ -46,15 +49,29 @@ func Resolve(commandName, env string, commands map[string]OpsCommand, vars OpsVa
 	lines := make([]ResolvedLine, 0, len(raw))
 	for _, line := range raw {
 		silent := false
-		if strings.HasPrefix(line, "@") {
-			silent = true
-			line = line[1:]
+		ignoreError := false
+		for len(line) > 0 {
+			switch line[0] {
+			case '@':
+				if !silent {
+					silent = true
+					line = line[1:]
+					continue
+				}
+			case '-':
+				if !ignoreError {
+					ignoreError = true
+					line = line[1:]
+					continue
+				}
+			}
+			break
 		}
 		substituted, err := substituteVars(line, env, vars)
 		if err != nil {
 			return ResolvedCommand{}, err
 		}
-		lines = append(lines, ResolvedLine{Text: substituted, Silent: silent})
+		lines = append(lines, ResolvedLine{Text: substituted, Silent: silent, IgnoreError: ignoreError})
 	}
 	return ResolvedCommand{Lines: lines}, nil
 }

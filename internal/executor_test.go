@@ -180,3 +180,95 @@ func TestExecute_EmptyLinesWithSilent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, buf.String())
 }
+
+// --- IgnoreError behavior tests ---
+
+func TestExecute_IgnoreErrorContinues(t *testing.T) {
+	var buf bytes.Buffer
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true},
+		{Text: "true"},
+	}, "/bin/sh", false, &buf)
+	require.NoError(t, err)
+	assert.Equal(t, "false\ntrue\n", buf.String())
+}
+
+func TestExecute_IgnoreErrorExitCode42(t *testing.T) {
+	err := Execute([]ResolvedLine{
+		{Text: "exit 42", IgnoreError: true},
+	}, "/bin/sh", false, io.Discard)
+	assert.NoError(t, err)
+}
+
+func TestExecute_NonDashLineStillFails(t *testing.T) {
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: false},
+	}, "/bin/sh", false, io.Discard)
+	require.Error(t, err)
+	var exitErr *exec.ExitError
+	require.True(t, errors.As(err, &exitErr))
+	assert.Equal(t, 1, exitErr.ExitCode())
+}
+
+func TestExecute_IgnoreErrorInvalidShell(t *testing.T) {
+	err := Execute([]ResolvedLine{
+		{Text: "echo hi", IgnoreError: true},
+	}, "/nonexistent/shell/binary", false, io.Discard)
+	require.Error(t, err, "system-level error (shell not found) should not be ignored")
+}
+
+func TestExecute_FailAfterIgnored(t *testing.T) {
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true},
+		{Text: "false", IgnoreError: false},
+	}, "/bin/sh", false, io.Discard)
+	require.Error(t, err)
+	var exitErr *exec.ExitError
+	require.True(t, errors.As(err, &exitErr))
+	assert.Equal(t, 1, exitErr.ExitCode())
+}
+
+func TestExecute_IgnoreErrorAndSilent(t *testing.T) {
+	var buf bytes.Buffer
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true, Silent: true},
+	}, "/bin/sh", false, &buf)
+	require.NoError(t, err)
+	assert.Empty(t, buf.String())
+}
+
+func TestExecute_IgnoreErrorWithGlobalSilent(t *testing.T) {
+	var buf bytes.Buffer
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true},
+	}, "/bin/sh", true, &buf)
+	require.NoError(t, err)
+	assert.Empty(t, buf.String())
+}
+
+func TestExecute_AllLinesIgnoreError(t *testing.T) {
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true},
+		{Text: "exit 2", IgnoreError: true},
+		{Text: "exit 127", IgnoreError: true},
+	}, "/bin/sh", false, io.Discard)
+	assert.NoError(t, err)
+}
+
+func TestExecute_IgnoreErrorEchoStillShows(t *testing.T) {
+	var buf bytes.Buffer
+	err := Execute([]ResolvedLine{
+		{Text: "false", IgnoreError: true, Silent: false},
+	}, "/bin/sh", false, &buf)
+	require.NoError(t, err)
+	assert.Equal(t, "false\n", buf.String())
+}
+
+func TestExecute_IgnoreErrorCommandNotFound(t *testing.T) {
+	// Shell returns exit code 127 for command not found — this is an ExitError,
+	// so it should be ignored when IgnoreError is true.
+	err := Execute([]ResolvedLine{
+		{Text: "nonexistent-binary-xyz-12345", IgnoreError: true},
+	}, "/bin/sh", false, io.Discard)
+	assert.NoError(t, err)
+}

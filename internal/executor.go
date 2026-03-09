@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +17,11 @@ import (
 // Opsfile). When silent is true, no lines are echoed regardless of per-line
 // flags.
 //
-// Returns immediately on the first command failure.
+// When a line's IgnoreError flag is set (from a - prefix in the Opsfile),
+// non-zero exit codes from that line are ignored and execution continues.
+// System-level errors (e.g., shell not found) still propagate.
+//
+// Returns immediately on the first non-ignored command failure.
 func Execute(lines []ResolvedLine, shell string, silent bool, echo io.Writer) error {
 	for _, line := range lines {
 		if !silent && !line.Silent {
@@ -27,6 +32,10 @@ func Execute(lines []ResolvedLine, shell string, silent bool, echo io.Writer) er
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
+			var exitErr *exec.ExitError
+			if line.IgnoreError && errors.As(err, &exitErr) {
+				continue
+			}
 			return fmt.Errorf("running %q: %w", line.Text, err)
 		}
 	}
