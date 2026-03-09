@@ -6,6 +6,9 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'examples/Opsfile*'
+      - '.github/*'
+      - '.claude/*'
+      
 
 jobs:
 
