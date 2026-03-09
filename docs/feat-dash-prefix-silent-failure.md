@@ -162,12 +162,14 @@ if err := cmd.Run(); err != nil {
 }
 ```
 
-When `line.IgnoreError` is true, the error is discarded and execution continues:
+When `line.IgnoreError` is true, only `*exec.ExitError` (non-zero exit code) is ignored — system-level errors such as shell-not-found or permission-denied still propagate. This matches Make's `-` behavior, which only suppresses exit code failures, not execution failures:
 ```go
 if err := cmd.Run(); err != nil {
-    if !line.IgnoreError {
-        return fmt.Errorf("running %q: %w", line.Text, err)
+    var exitErr *exec.ExitError
+    if line.IgnoreError && errors.As(err, &exitErr) {
+        continue // non-zero exit code ignored per - prefix
     }
+    return fmt.Errorf("running %q: %w", line.Text, err)
 }
 ```
 
@@ -300,7 +302,10 @@ main.go
 ---
 
 ## Open Questions
-- [ ] Should stderr from an ignored-error line be visually differentiated (e.g., dimmed or prefixed with a warning)? Current proposal: no -- stderr passes through unchanged, matching Make behavior.
+- [x] Should stderr from an ignored-error line be visually differentiated (e.g., dimmed or prefixed with a warning)? **No** — stderr passes through unchanged, matching Make behavior.
+- [x] What happens with `-@-` or `@-@`? The loop consumes at most one `-` and one `@`. `-@-` strips one `-` and one `@`, leaving `-` as shell text. `@-@` strips one `@` and one `-`, leaving `@` as shell text. Both are correct and deterministic; a test case covers this.
+- [x] How does `-` prefix interact with `CommandArgs` passthrough? `CommandArgs` are appended at the shell invocation level after the resolver runs. Since `-` is stripped in the resolver and `IgnoreError` is metadata on `ResolvedLine`, there is no interaction. A test case validates this.
+- [x] Should system-level errors (shell not found, permission denied) be suppressed by `-`? **No** — only `*exec.ExitError` is ignored. `errors.As(err, &exitErr)` ensures non-exit errors always propagate.
 
 ---
 
