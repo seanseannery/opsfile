@@ -7,6 +7,12 @@ staging_SSH_USER=deploy
 SERVICE_NAME=my-service
 LOG_FILE=/var/log/my-service/app.log
 
+# SSH_KEY is a secret — inject it via env-file instead of committing it here:
+#   ops -e .ops_secrets.env prod tail-logs
+#
+# .ops_secrets.env:
+#   SSH_KEY=~/.ssh/prod_deploy_key
+
 tail-logs:
     default:
         ssh $(SSH_USER)@$(HOST) "tail -f $(LOG_FILE)"

@@ -6,6 +6,12 @@ APP_CONTAINER=app
 APP_PORT=8080
 DB_PORT=5432
 
+# PGUSER is referenced by db-connections below — inject it via env-file:
+#   ops -e .ops_secrets.env default db-connections
+#
+# .ops_secrets.env:
+#   PGUSER=mydbadmin
+
 tail-logs:
     default:
         docker compose -f $(COMPOSE_FILE) logs $(APP_CONTAINER) --follow --tail 100
