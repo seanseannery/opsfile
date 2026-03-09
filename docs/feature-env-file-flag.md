@@ -136,7 +136,7 @@ The implementation touches three existing files and adds one new file. The key p
 
 **`internal/command_resolver.go`** — extend `Resolve` and `resolveVar` to accept `envFileVars OpsVariables` and consult it at priority levels 3 and 6.
 
-**`cmd/ops/main.go`** — after flag parsing, call `internal.ParseEnvFiles(flags.EnvFiles)` if `len(flags.EnvFiles) > 0` (skip entirely when the flag is not used to avoid allocating an empty map), and pass the result to `internal.Resolve`.
+**`cmd/ops/main.go`** — after flag parsing, resolve the env-file path (`flags.EnvFile` if set, else check for `.ops_secrets.env` next to the Opsfile), call `internal.ParseEnvFile(path)`, and pass the result to `internal.Resolve`.
 
 ### Data Flow
 
@@ -199,7 +199,7 @@ main()
 - **`.ops_secrets.env` absence is silent**: Missing the default file is not an error — it's the common case for repos that don't use it yet. Only explicit `-e` paths error on absence.
 - **Separate `envFileVars` parameter over merged map**: Passing `envFileVars` as a distinct parameter to `resolveVar` makes the priority boundary explicit in code and in tests. Merging into a single map before resolution would require key-name tricks to preserve ordering.
 - **Reuse `extractVariableValue`**: The quoting and comment-stripping logic in `opsfile_parser.go` is already correct and tested. `envfile_parser.go` calls it directly rather than duplicating.
-- **`pflag.StringArrayP` for repeatable flag**: `pflag` already supports this; `-e a -e b` produces `[]string{"a","b"}` in declaration order.
+- **`pflag.StringP` for single-value flag**: `-e` accepts exactly one path; specifying it more than once is an error.
 
 ### Files to Create / Modify
 
