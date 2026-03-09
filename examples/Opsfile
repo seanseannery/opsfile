@@ -57,3 +57,14 @@ list-instance-ips:
             --region $(AWS_REGION) \
             --query "taskArns" \
             --output text
+
+
+# Redeploy the service container.
+# The - prefix ignores errors from stop/rm if the container isn't running.
+# The -@ prefix also suppresses echo output for the cleanup lines.
+redeploy:
+    local:
+        -@docker stop my-service
+        -@docker rm my-service
+        docker run -d --name my-service my-image
+        @echo "Redeployment complete"

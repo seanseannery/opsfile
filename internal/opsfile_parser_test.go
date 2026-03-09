@@ -84,7 +84,7 @@ func TestParseOpsFile_Commands(t *testing.T) {
 	_, commands, _, _, err := ParseOpsFile(examplesOpsfile(t))
 	require.NoError(t, err)
 
-	expectedCommands := []string{"tail-logs", "list-instance-ips", "show-profile"}
+	expectedCommands := []string{"tail-logs", "list-instance-ips", "show-profile", "redeploy"}
 	for _, name := range expectedCommands {
 		cmd, ok := commands[name]
 		require.True(t, ok, "command %q not found", name)

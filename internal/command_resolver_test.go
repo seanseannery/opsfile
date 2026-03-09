@@ -754,3 +754,307 @@ deploy:
 		assert.False(t, line.Silent, "line %d should not be silent", i)
 	}
 }
+
+// --- - (dash) prefix tests ---
+
+func TestResolve_DashPrefixStripped(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_NoDashPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].IgnoreError)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DashAtPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-@echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtDashPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@-echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DashPrefixWithVariable(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=hello
+
+my-cmd:
+    default:
+        -echo $(VAR)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashPrefixWithScopedVariable(t *testing.T) {
+	vars, commands := parseFixture(t, `
+prod_ACCT=123
+
+my-cmd:
+    default:
+        -echo $(ACCT)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "echo 123", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashPrefixWithBackslashContinuation(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        -aws logs \
+            --follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashPrefixWithIndentContinuation(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        -aws logs
+            --follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_MixedDashAndNonDash(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-docker stop app", "docker run app"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 2)
+	assert.Equal(t, "docker stop app", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.Equal(t, "docker run app", got.Lines[1].Text)
+	assert.False(t, got.Lines[1].IgnoreError)
+}
+
+func TestResolve_MultiLineMixedDashAt(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        -@echo setup
+        echo deploy
+        -echo cleanup
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 3)
+
+	wantTexts := []string{"echo setup", "echo deploy", "echo cleanup"}
+	wantSilent := []bool{true, false, false}
+	wantIgnoreError := []bool{true, false, true}
+	assert.Equal(t, wantTexts, lineTexts(got))
+	for i, line := range got.Lines {
+		assert.Equal(t, wantSilent[i], line.Silent, "line %d Silent", i)
+		assert.Equal(t, wantIgnoreError[i], line.IgnoreError, "line %d IgnoreError", i)
+	}
+}
+
+func TestResolve_DoubleDashPrefix(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"--echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "-echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashPrefixOnly(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.False(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DashAtPrefixOnly(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-@"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DashInMiddleOfLine(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"kubectl delete --force"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "kubectl delete --force", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashInVariableValue(t *testing.T) {
+	vars, commands := parseFixture(t, `
+VAR=hello-world
+
+my-cmd:
+    default:
+        echo $(VAR)
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	assert.Equal(t, "echo hello-world", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashOnContinuationFragment(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        aws logs \
+            -follow
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws logs -follow", got.Lines[0].Text)
+	assert.False(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashPrefixMissingVariable(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-echo $(MISSING)"},
+		}},
+	}
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
+}
+
+func TestResolve_DashPrefixWhitespaceAfter(t *testing.T) {
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-   "},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "   ", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+}
+
+func TestResolve_DashAtWithBackslashContinuation(t *testing.T) {
+	vars, commands := parseFixture(t, `
+my-cmd:
+    prod:
+        -@aws stop \
+            --force
+`)
+	got, err := Resolve("my-cmd", "prod", commands, vars)
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "aws stop --force", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_DashAtDashPrefix(t *testing.T) {
+	// -@- should strip one - and one @, leaving - as shell text
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"-@-echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "-echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
+
+func TestResolve_AtDashAtPrefix(t *testing.T) {
+	// @-@ should strip one @ and one -, leaving @ as shell text
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"@-@echo hello"},
+		}},
+	}
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{})
+	require.NoError(t, err)
+	require.Len(t, got.Lines, 1)
+	assert.Equal(t, "@echo hello", got.Lines[0].Text)
+	assert.True(t, got.Lines[0].IgnoreError)
+	assert.True(t, got.Lines[0].Silent)
+}
