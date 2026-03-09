@@ -513,6 +513,33 @@ func TestResolveVar_AbsentFromAllSources(t *testing.T) {
 	assert.ErrorContains(t, err, "not defined")
 }
 
+func TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped(t *testing.T) {
+	// P3 (env-file env-scoped) must beat P5 (Opsfile unscoped).
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	vars := OpsVariables{"VAR": "opsfile-unscoped"} // P5
+	envFileVars := OpsVariables{"prod_VAR": "envfile-scoped"} // P3
+	got, err := Resolve("my-cmd", "prod", commands, vars, envFileVars)
+	require.NoError(t, err)
+	assert.Equal(t, "echo envfile-scoped", got.Lines[0].Text)
+}
+
+func TestResolveVar_EnvFileScopedKeyWrongEnv(t *testing.T) {
+	// An env-file key scoped to a different env must not resolve for the current env.
+	commands := map[string]OpsCommand{
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
+			"prod": {"echo $(VAR)"},
+		}},
+	}
+	envFileVars := OpsVariables{"staging_VAR": "wrong-env-value"}
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, envFileVars)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not defined")
+}
+
 // --- @ prefix tests ---
 
 func TestResolve_AtPrefixStripped(t *testing.T) {

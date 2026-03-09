@@ -263,6 +263,11 @@ func TestParseOpsFlags_HelpOutput(t *testing.T) {
 	for _, want := range []string{"-D", "-d", "-e", "-l", "-s", "-v"} {
 		assert.Contains(t, output, want)
 	}
+	// FR-4: --dry-run note about secret visibility must appear in help.
+	assert.Contains(t, output, "--dry-run", "help must mention --dry-run secret visibility")
+	assert.Contains(t, output, "secret", "help must note that secret values are printed by --dry-run")
+	// FR-6: flag-position constraint note must appear in help.
+	assert.Contains(t, output, "before", "help must note that flags must appear before env/command args")
 
 	// Verify unknown flag error includes the flag name.
 	_, _, unknownErr := ParseOpsFlags([]string{"--foobar"}, &buf)

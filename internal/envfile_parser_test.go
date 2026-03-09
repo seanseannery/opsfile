@@ -135,3 +135,31 @@ VAR=value`)
 	require.NoError(t, err)
 	assert.Equal(t, OpsVariables{"VAR": "value"}, vars)
 }
+
+func TestParseEnvFile_WindowsLineEndings(t *testing.T) {
+	// Files with \r\n line endings must parse correctly — no \r in values.
+	path := filepath.Join(t.TempDir(), ".env")
+	err := os.WriteFile(path, []byte("KEY=value\r\nOTHER=thing\r\n"), 0o644)
+	require.NoError(t, err)
+	vars, parseErr := ParseEnvFile(path)
+	require.NoError(t, parseErr)
+	assert.Equal(t, "value", vars["KEY"], "value must not contain trailing \\r")
+	assert.Equal(t, "thing", vars["OTHER"], "value must not contain trailing \\r")
+}
+
+func TestParseEnvFile_PathIsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	_, err := ParseEnvFile(dir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "env-file")
+	assert.ErrorContains(t, err, dir)
+}
+
+func TestParseEnvFile_ErrorFormat(t *testing.T) {
+	// NFR-3: error message must use the format: env-file "<path>": <os error>
+	const missingPath = "/nonexistent/qa-test-path.env"
+	_, err := ParseEnvFile(missingPath)
+	require.Error(t, err)
+	assert.True(t, len(err.Error()) > 0)
+	assert.Contains(t, err.Error(), `env-file "`+missingPath+`"`)
+}
