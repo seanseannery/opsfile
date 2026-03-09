@@ -8,30 +8,31 @@
 ## 1. Scope
 
 ### In Scope
-- Flag parsing: `-e` / `--env-file` short and long forms, single and multiple invocations (`OpsFlags.EnvFiles`)
-- Env-file parsing: `ParseEnvFiles` — quoting, comments, blank lines, env-scoped keys, empty values, error cases
-- Resolver integration: 6-level priority chain with env-file at levels 3 and 6
-- File validation: missing file, unreadable file, directory-instead-of-file — all fail before execution
-- Multiple-file ordering: later files override earlier files within the env-file layer
-- `--help` text: verifies dry-run secret visibility note is present
-- Regression: existing 4-level priority chain tests still pass; no new variables bleed into existing behaviour
+- Flag parsing: `-e` / `--env-file` short and long forms; `OpsFlags.EnvFile string` (single value); error if specified more than once
+- Default env file: auto-loading `.ops_secrets.env` from the Opsfile directory when `-e` is not given; silent skip when absent; bypass when `-e` is explicit
+- Env-file parsing: `ParseEnvFile` — quoting, comments, blank lines, env-scoped keys, empty values, error cases
+- Resolver integration: updated 6-level priority chain (shell env wins) with env-file at levels 3 and 6
+- File validation: missing explicit file errors before execution; missing default file is silently skipped
+- `--help` text: dry-run secret visibility note and flag-position constraint (`-e` must precede positionals)
+- Regression: existing resolver priority tests still pass after shell-wins reorder; no `EnvFiles []string` references remain
 
 ### Out of Scope
 - Secret masking in `--dry-run` output (documented non-goal)
 - Shell expansion / substitution inside `.env` values
 - `export KEY=value` syntax support
 - `KEY` lines without `=` (bash-style extension)
-- System-wide or per-user default env file paths
+- Stacking `.ops_secrets.env` with an explicit `-e` file (non-goal: explicit replaces default)
 
 ---
 
 ## 2. Test Objectives
 
-- Verify all documented flag forms (`-e`, `--env-file`) are parsed correctly and populate `OpsFlags.EnvFiles` in order
-- Verify `ParseEnvFiles` correctly handles the full `.env` format: quoting rules, comments, blank lines, empty values, parse errors
-- Verify the 6-level priority chain correctly orders env-file vars at levels 3 and 6 relative to all other sources
-- Verify file-not-found / unreadable errors surface before any command execution
-- Verify the `--help` output contains a note about `--dry-run` exposing secret values
+- Verify `-e` / `--env-file` is parsed correctly as a single-value `string` field, and errors on duplicate use
+- Verify `.ops_secrets.env` is auto-loaded when absent and silently skipped when absent, and skipped entirely when `-e` is explicit
+- Verify `ParseEnvFile` correctly handles the full `.env` format: quoting rules, comments, blank lines, empty values, parse errors
+- Verify the updated 6-level priority chain places shell env above Opsfile and env-file at the bottom two slots
+- Verify explicit env-file missing errors include the path in format `env-file "<path>": <os error>`
+- Verify `--help` output contains both the dry-run secret note and the flag-position constraint note
 - Verify no regressions in flag parsing, command resolution, or Opsfile variable handling
 
 ---
@@ -47,19 +48,21 @@
 - [ ] All green path automated tests pass
 - [ ] All red path automated tests pass
 - [ ] All edge case automated tests pass
-- [ ] `--help` output manually verified to include dry-run note
+- [ ] `--help` output manually verified to include dry-run note and flag-position constraint
 - [ ] No regressions in related features (flag parsing, command resolution, Opsfile parsing)
 - [ ] Test coverage does not decrease
 
 ### Acceptance Criteria
 
-- [ ] `-e path` and `--env-file path` both populate `OpsFlags.EnvFiles`
-- [ ] Multiple `-e` flags are collected in declaration order
-- [ ] Missing or unreadable env-file produces a clear error including the file path, before any command runs
-- [ ] Env-file vars are resolved at priority 3 (env-scoped) and 6 (unscoped) — below Opsfile and shell, above "not found"
-- [ ] Later files override earlier files for the same key (within the env-file layer)
-- [ ] `--help` output contains a note that `--dry-run` will print resolved secret values
-- [ ] Env-file variable values are never printed to stdout/stderr by `ops` outside of `--dry-run`
+- [ ] `-e path` and `--env-file path` both set `OpsFlags.EnvFile` (a `string`, not a slice)
+- [ ] Specifying `-e` more than once is an error
+- [ ] `.ops_secrets.env` in the Opsfile directory is auto-loaded when no `-e` flag is given and the file exists
+- [ ] `.ops_secrets.env` absence (when no `-e` given) is silently ignored — no error, no warning
+- [ ] When `-e` is explicit, `.ops_secrets.env` is not loaded even if present
+- [ ] Missing explicit env-file produces error in format `env-file "<path>": <os error>` before any command runs
+- [ ] Shell env-scoped wins at priority 1, Opsfile env-scoped at 2, env-file env-scoped at 3, shell unscoped at 4, Opsfile unscoped at 5, env-file unscoped at 6
+- [ ] `--help` output contains note that `--dry-run` prints resolved secret values
+- [ ] `--help` output contains note that `-e` must appear before environment/command positionals
 
 ---
 
@@ -67,27 +70,32 @@
 
 | Short Title | Test Name | Input / Setup | Expected Outcome | Type |
 |---|---|---|---|---|
-| `-e` short form | `TestParseOpsFlags_EnvFileShortForm` | `[]string{"-e", ".env", "prod", "cmd"}` | `OpsFlags.EnvFiles == [".env"]`, positionals `["prod","cmd"]` | automated (unit) |
-| `--env-file` long form | `TestParseOpsFlags_EnvFileLongForm` | `[]string{"--env-file", ".env", "prod", "cmd"}` | `OpsFlags.EnvFiles == [".env"]`, positionals `["prod","cmd"]` | automated (unit) |
-| Multiple `-e` flags in order | `TestParseOpsFlags_EnvFileMultiple` | `[]string{"-e", "a.env", "-e", "b.env", "prod", "cmd"}` | `OpsFlags.EnvFiles == ["a.env","b.env"]` in declaration order | automated (unit) |
-| `-e` combined with other flags | `TestParseOpsFlags_EnvFileCombined` | `[]string{"-d", "-e", ".env", "prod", "cmd"}` | `DryRun==true`, `EnvFiles==[".env"]` | automated (unit) |
-| Single file, basic vars | `TestParseEnvFiles_SingleFile` | File: `KEY=value\nOTHER=thing` | `OpsVariables{"KEY":"value","OTHER":"thing"}`, no error | automated (unit) |
-| Double-quoted value | `TestParseEnvFiles_DoubleQuoted` | File: `DB_PASS="my secret"` | `OpsVariables{"DB_PASS":"my secret"}` | automated (unit) |
-| Single-quoted value | `TestParseEnvFiles_SingleQuoted` | File: `TOKEN='sk-abc'` | `OpsVariables{"TOKEN":"sk-abc"}` | automated (unit) |
-| Comment lines skipped | `TestParseEnvFiles_CommentsSkipped` | File: `# ignored\nKEY=val` | `OpsVariables{"KEY":"val"}` only | automated (unit) |
-| Blank lines skipped | `TestParseEnvFiles_BlankLinesSkipped` | File: `KEY=val\n\nOTHER=x` | Both vars parsed, no error | automated (unit) |
-| Env-scoped key parsed | `TestParseEnvFiles_EnvScopedKey` | File: `prod_API_KEY=secret` | `OpsVariables{"prod_API_KEY":"secret"}` | automated (unit) |
-| Multiple files, no conflict | `TestParseEnvFiles_MultipleFiles_NoConflict` | file1: `A=1`, file2: `B=2` | `OpsVariables{"A":"1","B":"2"}` | automated (unit) |
-| Multiple files, later overrides | `TestParseEnvFiles_MultipleFiles_LaterOverrides` | file1: `VAR=first`, file2: `VAR=second` | `OpsVariables{"VAR":"second"}` | automated (unit) |
-| Level 3: env-file scoped resolved | `TestResolveVar_EnvFileScopedFallback` | env-file has `prod_SECRET=env-scoped`, no Opsfile or shell var | `$(SECRET)` resolves to `"env-scoped"` | automated (unit) |
-| Level 6: env-file unscoped resolved | `TestResolveVar_EnvFileUnscopedFallback` | env-file has `SECRET=from-file`, no Opsfile or shell var | `$(SECRET)` resolves to `"from-file"` | automated (unit) |
-| Level 3 beats level 4 | `TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped` | env-file: `prod_VAR=L3`, Opsfile: `VAR=L4` | resolves to `"L3"` | automated (unit) |
-| Level 5 beats level 6 | `TestResolveVar_ShellUnscopedBeatsEnvFileUnscoped` | shell env: `VAR=L5`, env-file: `VAR=L6` | resolves to `"L5"` | automated (unit) |
-| Level 4 beats level 6 | `TestResolveVar_OpsfileUnscopedBeatsEnvFileUnscoped` | Opsfile: `VAR=L4`, env-file: `VAR=L6` | resolves to `"L4"` | automated (unit) |
-| Level 1 beats all env-file levels | `TestResolveVar_OpsfileScopedBeatsEnvFile` | Opsfile: `prod_VAR=L1`, env-file: `prod_VAR=L3`, env-file: `VAR=L6` | resolves to `"L1"` | automated (unit) |
-| Vars from different sources in same command | `TestResolveVar_EnvFileMixedSources` | Opsfile: `A=opsfile`, env-file: `B=envfile` | `echo $(A) $(B)` → `"echo opsfile envfile"` | automated (unit) |
-| Empty EnvFiles slice is no-op | `TestParseEnvFiles_EmptySlice` | `ParseEnvFiles([]string{})` | returns empty `OpsVariables{}`, no error | automated (unit) |
-| `-h` output contains dry-run note | `TestParseOpsFlags_HelpContainsDryRunNote` | `ParseOpsFlags([]string{"-h"}, &buf)` | `buf` contains text about `--dry-run` and secrets / secret values visible | automated (unit) |
+| `-e` short form | `TestParseOpsFlags_EnvFileShortForm` | `[]string{"-e", ".env", "prod", "cmd"}` | `OpsFlags.EnvFile == ".env"`, positionals `["prod","cmd"]` | automated (unit) |
+| `--env-file` long form | `TestParseOpsFlags_EnvFileLongForm` | `[]string{"--env-file", ".env", "prod", "cmd"}` | `OpsFlags.EnvFile == ".env"`, positionals `["prod","cmd"]` | automated (unit) |
+| `-e` combined with `-d` | `TestParseOpsFlags_EnvFileCombinedWithDryRun` | `[]string{"-d", "-e", ".env", "prod", "cmd"}` | `DryRun==true`, `EnvFile==".env"` | automated (unit) |
+| `-e` combined with `-D` | `TestParseOpsFlags_EnvFileCombinedWithDirectory` | `[]string{"-D", "/tmp", "-e", ".env", "prod", "cmd"}` | `Directory=="/tmp"`, `EnvFile==".env"` | automated (unit) |
+| No flag, `EnvFile` is empty | `TestParseOpsFlags_NoEnvFile` | `[]string{"prod", "cmd"}` | `OpsFlags.EnvFile == ""` | automated (unit) |
+| Single file, basic vars | `TestParseEnvFile_BasicVars` | File: `KEY=value\nOTHER=thing` | `OpsVariables{"KEY":"value","OTHER":"thing"}`, no error | automated (unit) |
+| Double-quoted value | `TestParseEnvFile_DoubleQuoted` | File: `DB_PASS="my secret"` | `OpsVariables{"DB_PASS":"my secret"}` | automated (unit) |
+| Single-quoted value | `TestParseEnvFile_SingleQuoted` | File: `TOKEN='sk-abc'` | `OpsVariables{"TOKEN":"sk-abc"}` | automated (unit) |
+| Comment lines skipped | `TestParseEnvFile_CommentsSkipped` | File: `# ignored\nKEY=val` | `OpsVariables{"KEY":"val"}` only | automated (unit) |
+| Blank lines skipped | `TestParseEnvFile_BlankLinesSkipped` | File: `KEY=val\n\nOTHER=x` | both vars parsed, no error | automated (unit) |
+| Env-scoped key parsed | `TestParseEnvFile_EnvScopedKey` | File: `prod_API_KEY=secret` | `OpsVariables{"prod_API_KEY":"secret"}` | automated (unit) |
+| Default `.ops_secrets.env` loaded | `TestMain_DefaultEnvFileLoaded` | `.ops_secrets.env` present in Opsfile dir, no `-e` flag | vars from `.ops_secrets.env` resolve in commands | e2e / manual verification |
+| Default `.ops_secrets.env` absent silently | `TestMain_DefaultEnvFileAbsentSilent` | No `.ops_secrets.env` in Opsfile dir, no `-e` flag | no error; run proceeds as if no env-file | e2e / manual verification |
+| Explicit `-e` bypasses default | `TestMain_ExplicitEnvFileBypassesDefault` | `.ops_secrets.env` present in Opsfile dir AND `-e other.env` given | only `other.env` vars loaded; `.ops_secrets.env` vars absent | e2e / manual verification |
+| Priority P1: shell env-scoped wins all | `TestResolveVar_ShellScopedWinsAll` | shell: `prod_VAR=P1`, Opsfile: `prod_VAR=P2`, env-file: `prod_VAR=P3` | resolves to `"P1"` | automated (unit) |
+| Priority P2: Opsfile env-scoped beats env-file scoped and unscoped | `TestResolveVar_OpsfileScopedBeatsEnvFile` | Opsfile: `prod_VAR=P2`, env-file: `prod_VAR=P3`, env-file: `VAR=P6` | resolves to `"P2"` | automated (unit) |
+| Priority P3: env-file env-scoped resolved | `TestResolveVar_EnvFileScopedFallback` | env-file: `prod_SECRET=P3`, no Opsfile or shell var | `$(SECRET)` resolves to `"P3"` | automated (unit) |
+| Priority P4: shell unscoped beats Opsfile and env-file unscoped | `TestResolveVar_ShellUnscopedBeatsRemainder` | shell: `VAR=P4`, Opsfile: `VAR=P5`, env-file: `VAR=P6` | resolves to `"P4"` | automated (unit) |
+| Priority P5: Opsfile unscoped beats env-file unscoped | `TestResolveVar_OpsfileUnscopedBeatsEnvFileUnscoped` | Opsfile: `VAR=P5`, env-file: `VAR=P6` | resolves to `"P5"` | automated (unit) |
+| Priority P6: env-file unscoped resolved | `TestResolveVar_EnvFileUnscopedFallback` | env-file: `SECRET=P6`, no Opsfile or shell var | `$(SECRET)` resolves to `"P6"` | automated (unit) |
+| Vars from Opsfile and env-file in same command | `TestResolveVar_EnvFileMixedSources` | Opsfile: `A=opsfile`, env-file: `B=envfile` | `echo $(A) $(B)` → `"echo opsfile envfile"` | automated (unit) |
+| Shell overrides env-file for same key | `TestResolveVar_ShellOverridesEnvFile` | shell: `VAR=shell`, env-file: `VAR=envfile` | resolves to `"shell"` | automated (unit) |
+| Empty `EnvFile` is no-op | `TestParseEnvFile_EmptyFile` | File exists but contains no content | `OpsVariables{}`, no error | automated (unit) |
+| `-h` output contains dry-run note | `TestParseOpsFlags_HelpContainsDryRunNote` | `ParseOpsFlags([]string{"-h"}, &buf)` | `buf` contains text about `--dry-run` and secret/secret values visible | automated (unit) |
+| `-h` output contains flag-position note | `TestParseOpsFlags_HelpContainsFlagPositionNote` | `ParseOpsFlags([]string{"-h"}, &buf)` | `buf` contains text that `-e` must precede environment/command positionals | automated (unit) |
+| `-h` output contains `-e` flag | `TestParseOpsFlags_HelpContainsEnvFlag` | `ParseOpsFlags([]string{"-h"}, &buf)` | `buf` contains `-e` | automated (unit) |
 
 ---
 
@@ -95,13 +103,15 @@
 
 | Short Title | Test Name | Input / Setup | Expected Outcome | Type |
 |---|---|---|---|---|
-| Missing file | `TestParseEnvFiles_MissingFile` | `ParseEnvFiles([]string{"/no/such/file.env"})` | error, message contains `"/no/such/file.env"` | automated (unit) |
-| Unreadable file | `TestParseEnvFiles_UnreadableFile` | Create file with mode `0000`, call `ParseEnvFiles` | error, message contains file path | automated (unit) |
-| Empty key (parse error) | `TestParseEnvFiles_EmptyKey` | File: `=value` | error, message contains line number | automated (unit) |
-| Missing path argument | `TestParseOpsFlags_EnvFileMissingArg` | `[]string{"-e"}` (no path follows) | error containing `"flag needs an argument"` or equivalent | automated (unit) |
-| `--env-file` missing path argument | `TestParseOpsFlags_EnvFileLongMissingArg` | `[]string{"--env-file"}` | error containing `"flag needs an argument"` or equivalent | automated (unit) |
-| Var absent from all sources including env-file | `TestResolveVar_AbsentFromAllSourcesWithEnvFile` | env-file present but `MISSING_VAR` not in it | error contains `"not defined"` | automated (unit) |
-| File execution blocked on missing env-file | `TestMain_EnvFileMissingBlocksExecution` | `ops -e /missing.env prod cmd` with valid Opsfile | error surfaces before command execution (no shell exec occurs) | e2e / manual verification |
+| `-e` specified twice is error | `TestParseOpsFlags_EnvFileDuplicate` | `[]string{"-e", "a.env", "-e", "b.env", "prod", "cmd"}` | error returned (not ErrHelp); error message indicates duplicate/repeated flag | automated (unit) |
+| `--env-file` twice is error | `TestParseOpsFlags_EnvFileLongDuplicate` | `[]string{"--env-file", "a.env", "--env-file", "b.env", "prod", "cmd"}` | error returned | automated (unit) |
+| Missing explicit env-file | `TestParseEnvFile_MissingFile` | `ParseEnvFile("/no/such/file.env")` | error matching `env-file "/no/such/file.env": ...`, contains path | automated (unit) |
+| Unreadable explicit env-file | `TestParseEnvFile_UnreadableFile` | Create file with mode `0000`, call `ParseEnvFile` | error containing file path | automated (unit) |
+| Empty key (parse error) | `TestParseEnvFile_EmptyKey` | File: `=value` | error containing line number | automated (unit) |
+| `-e` missing argument (short) | `TestParseOpsFlags_EnvFileMissingArg` | `[]string{"-e"}` | error containing `"flag needs an argument"` or equivalent | automated (unit) |
+| `--env-file` missing argument | `TestParseOpsFlags_EnvFileLongMissingArg` | `[]string{"--env-file"}` | error containing `"flag needs an argument"` or equivalent | automated (unit) |
+| Var absent from all sources including env-file | `TestResolveVar_AbsentWithEnvFile` | env-file present but `MISSING_VAR` not in it | error contains `"not defined"` | automated (unit) |
+| Explicit missing file blocks execution | `TestMain_MissingExplicitEnvFileBlocksExec` | `ops -e /missing.env prod cmd` with valid Opsfile | error in `env-file "/missing.env": ...` format before any shell exec | e2e / manual verification |
 
 ---
 
@@ -109,33 +119,33 @@
 
 | Short Title | Test Name | Input / Setup | Expected Outcome | Type |
 |---|---|---|---|---|
-| Empty value | `TestParseEnvFiles_EmptyValue` | File: `KEY=` | `OpsVariables{"KEY":""}`, no error | automated (unit) |
-| Whitespace-only value (unquoted) | `TestParseEnvFiles_WhitespaceValue` | File: `KEY=   ` | value trimmed to `""` OR preserved as `"   "` — document which and assert consistently | automated (unit) |
-| Inline comment stripped | `TestParseEnvFiles_InlineComment` | File: `KEY=value # comment` | if `indexComment` strips it: `OpsVariables{"KEY":"value"}` — verify behaviour matches Opsfile vars | automated (unit) |
-| Whitespace-only lines | `TestParseEnvFiles_WhitespaceOnlyLines` | File: `KEY=val\n   \nOTHER=x` | both vars parsed, whitespace-only line treated as blank | automated (unit) |
-| Key with leading/trailing spaces | `TestParseEnvFiles_KeyWithSpaces` | File: `  KEY  =value` | define expected: error OR trimmed `KEY`. Document and test. | automated (unit) |
-| `export KEY=value` line | `TestParseEnvFiles_ExportSyntax` | File: `export KEY=value` | per non-goals: parse error OR ignore (key `"export KEY"` or error) — document and test | automated (unit) |
-| `KEY` without `=` | `TestParseEnvFiles_KeyWithoutEquals` | File: `NODEFINEDVALUE` | per non-goals: error or skip — document and test | automated (unit) |
-| Windows line endings (`\r\n`) | `TestParseEnvFiles_WindowsLineEndings` | File with `\r\n` line endings | vars parsed correctly, no `\r` in values | automated (unit) |
-| Same file specified twice | `TestParseEnvFiles_SameFileTwice` | `ParseEnvFiles([]string{"a.env","a.env"})` | second parse overrides first (idempotent), no error | automated (unit) |
-| Path is a directory | `TestParseEnvFiles_PathIsDirectory` | `ParseEnvFiles([]string{"/tmp"})` | clear error, includes path | automated (unit) |
-| Env-file env-scoped beats Opsfile unscoped (level 3 vs 4) | `TestResolveVar_Level3VsLevel4` | env-file: `prod_VAR=L3`, Opsfile: `VAR=L4`, no shell vars | resolves to `"L3"` — verifies env-file env-scoped is higher priority than Opsfile unscoped | automated (unit) |
-| Full 6-level priority chain | `TestResolveVar_FullPriorityChain` | All 6 levels populated; drop each one in turn | confirm each level wins at the correct position in the chain | automated (unit) |
-| Env-file env-scoped key for wrong env | `TestResolveVar_EnvFileScopedKeyWrongEnv` | env-file: `staging_VAR=wrong`, running env: `prod` | `$(VAR)` does NOT resolve to `"wrong"` from the staging-scoped key | automated (unit) |
-| Empty file | `TestParseEnvFiles_EmptyFile` | File exists but contains no content | `OpsVariables{}`, no error | automated (unit) |
-| File with only comments | `TestParseEnvFiles_OnlyComments` | File: `# just a comment\n# another` | `OpsVariables{}`, no error | automated (unit) |
-| Large number of variables | `TestParseEnvFiles_ManyVars` | File with 1000 `KEY_N=value_N` lines | all vars parsed, no error | automated (unit) |
-| `-e` interleaved with positionals blocked | `TestParseOpsFlags_EnvFlagAfterPositional` | `[]string{"prod", "-e", ".env", "cmd"}` | `-e` treated as positional (not a flag) due to `SetInterspersed(false)` | automated (unit) |
+| Empty value | `TestParseEnvFile_EmptyValue` | File: `KEY=` | `OpsVariables{"KEY":""}`, no error | automated (unit) |
+| Whitespace-only value (unquoted) | `TestParseEnvFile_WhitespaceValue` | File: `KEY=   ` | define and assert: trimmed to `""` or preserved — document which | automated (unit) |
+| Inline comment stripped | `TestParseEnvFile_InlineComment` | File: `KEY=value # comment` | `OpsVariables{"KEY":"value"}` — same behaviour as Opsfile `indexComment` | automated (unit) |
+| Whitespace-only lines | `TestParseEnvFile_WhitespaceOnlyLines` | File: `KEY=val\n   \nOTHER=x` | both vars parsed; whitespace-only line treated as blank | automated (unit) |
+| `export KEY=value` line | `TestParseEnvFile_ExportSyntax` | File: `export KEY=value` | define expected: parse error OR treats `"export KEY"` as the name — document and test | automated (unit) |
+| `KEY` without `=` | `TestParseEnvFile_KeyWithoutEquals` | File: `NODEFINEDVALUE` | define expected: error or skip — document and test | automated (unit) |
+| Windows line endings (`\r\n`) | `TestParseEnvFile_WindowsLineEndings` | File with `\r\n` line endings | vars parsed correctly; no `\r` in values | automated (unit) |
+| Path is a directory | `TestParseEnvFile_PathIsDirectory` | `ParseEnvFile("/tmp")` | clear error; message contains path | automated (unit) |
+| Env-file env-scoped key for wrong env | `TestResolveVar_EnvFileScopedKeyWrongEnv` | env-file: `staging_VAR=wrong`, running env: `prod` | `$(VAR)` does NOT resolve from the staging-scoped key | automated (unit) |
+| P3 beats P5: env-file scoped beats Opsfile unscoped | `TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped` | env-file: `prod_VAR=P3`, Opsfile: `VAR=P5`, no shell vars | resolves to `"P3"` — env-file env-scoped is higher priority than Opsfile unscoped | automated (unit) |
+| Full 6-level drop-each table | `TestResolveVar_FullPriorityChain` | Drop each priority level one at a time, assert the next level wins | systematic proof of all 6 priority positions in correct order | automated (unit) |
+| `-e` after positional is silently ignored | `TestParseOpsFlags_EnvFlagAfterPositional` | `[]string{"prod", "-e", ".env", "cmd"}` | due to `SetInterspersed(false)`: `-e`, `.env`, `cmd` treated as positionals; `EnvFile == ""` | automated (unit) |
+| Default `.ops_secrets.env` present with explicit `-e` | `TestMain_DefaultNotStackedWithExplicit` | `.ops_secrets.env` in Opsfile dir with `VAR=from-default`; `-e other.env` (no `VAR`); command uses `$(VAR)` | `VAR` is NOT resolved from `.ops_secrets.env` — explicit replaces default entirely | e2e / manual verification |
+| File with only comments | `TestParseEnvFile_OnlyComments` | File: `# just a comment\n# another` | `OpsVariables{}`, no error | automated (unit) |
+| Error message format | `TestParseEnvFile_ErrorFormat` | `ParseEnvFile("/no/such/path.env")` | error message matches `env-file "/no/such/path.env":` prefix exactly | automated (unit) |
 
 ---
 
 ## 9. Existing Automated Tests
 
-- `TestParseOpsFlags` in `internal/flag_parser_test.go` (line 12) — 27 subtests covering all existing flags; must be extended for `-e`/`--env-file` cases
-- `TestParseOpsFlags_HelpOutput` in `internal/flag_parser_test.go` (line 217) — verifies `-D,-d,-l,-s,-v` in help; must be extended to check `-e` and dry-run note
-- `TestResolveVar_PriorityChain` in `internal/command_resolver_test.go` (line 400) — covers 4-level chain (L1–L4); must be extended or supplemented for the new 6-level chain; **note: existing L3/L4 labels mapped to Opsfile unscoped / shell unscoped — these stay valid but new tests must add L3=env-file-scoped and L6=env-file-unscoped**
-- `TestResolveVar_UnscopedShellEnvFallback` through `TestResolveVar_ShellEnvUnscopedIsLastResort` (lines 325–398) — individual priority boundary tests; must remain green after the `Resolve` signature change
-- `TestResolveVar_MissingVariableReturnsError` / `TestResolve_VariableNotDefined` (lines 193, 282) — these should still return "not defined" errors when env-file has no matching var either
+- `TestParseOpsFlags` in `internal/flag_parser_test.go` (line 12) — 27 subtests covering existing flags; must be extended for `-e`/`--env-file` single-value cases and duplicate-flag error
+- `TestParseOpsFlags_HelpOutput` in `internal/flag_parser_test.go` (line 217) — verifies `-D,-d,-l,-s,-v` in help; must be extended to check `-e`, dry-run note, and flag-position constraint
+- `TestResolveVar_PriorityChain` in `internal/command_resolver_test.go` (line 400) — covers the old 4-level chain with "level1–level4" subtest names; **implementation PR must rename these to avoid collision with new 6-level numbering (suggested: "p1 shell-env-scoped" … "p4 opsfile-unscoped")** and extend for the two new env-file levels
+- `TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped` (line 349) — **this test will FAIL after the priority swap (shell now beats Opsfile)**; it must be inverted or replaced as part of the implementation PR
+- `TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped` (line 362) — still valid (shell-scoped beats Opsfile-unscoped) but now for different reasons; verify it still passes
+- `TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped` (line 375) — **this test will FAIL after the priority swap (shell-unscoped is now P4, Opsfile-unscoped is P5)**; must be inverted or replaced
+- `TestResolveVar_ShellEnvUnscopedIsLastResort` (line 388) — **no longer accurate**; shell-unscoped is now P4 (not last resort); rename and rework
 
 ---
 
@@ -143,30 +153,28 @@
 
 | Scenario | Type | What It Validates |
 |---|---|---|
-| `ParseEnvFiles` for empty/nil slice | unit | Confirms no-op short-circuit path in `main.go` open question |
-| Priority level 3 env-file-scoped beats level 4 Opsfile-unscoped | unit | Critical boundary; not explicitly called out in design task breakdown |
-| Full 6-level drop-each-level table test | unit | Systematic proof the chain is correctly ordered |
-| Windows `\r\n` handling in env-file parser | unit | Portability edge case not mentioned in design |
-| `export KEY=value` and `KEY` (no `=`) handling | unit | Non-goals require defined error/skip behaviour — not specified in detail |
-| Inline comment stripping consistency with Opsfile parser | unit | Design says reuse `indexComment` but test needed to confirm identical behaviour |
-| Env-file missing at execution (blocked before shell exec) | e2e | Validates the "validate before execute" guarantee from FR-1/NFR-3 |
-| `--help` output contains dry-run secret visibility note | unit | FR-4 requires this but `TestParseOpsFlags_HelpOutput` does not check for it |
-| Path is a directory passed to `-e` | unit | Undefined in design; should fail cleanly |
+| Full 6-level drop-each-level table | unit | Systematic proof all 6 priority positions are correctly ordered after the shell-wins change |
+| Shell env beats Opsfile env-scoped (new P1 > P2 boundary) | unit | Critical inversion from old design — three existing tests currently assert the opposite and must be replaced |
+| `ParseEnvFile("")` (empty-string path) | unit | Ensures empty `EnvFile` field in `OpsFlags` is guarded in `main.go` before calling `ParseEnvFile` |
+| Default `.ops_secrets.env` auto-load (file present) | e2e | Validates FR-5 happy path |
+| Default `.ops_secrets.env` absent is silent (no error) | e2e | Validates FR-5 silent-skip guarantee |
+| Explicit `-e` suppresses default `.ops_secrets.env` | e2e | Validates FR-5 "explicit replaces default" design decision |
+| `-e` specified twice produces error | unit | FR-1 single-use constraint |
+| `--help` contains flag-position constraint note | unit | FR-6: `SetInterspersed(false)` footgun must be documented |
+| Error message format `env-file "<path>": ...` | unit | NFR-3 specifies exact format; should be asserted, not just "contains path" |
+| Windows `\r\n` line endings in env-file | unit | Portability; not mentioned in design but common cross-platform issue |
+| Path-is-a-directory passed to `-e` | unit | Undefined in design; should fail cleanly with path in error |
 
 ---
 
 ## Notes
 
-### Design Doc Issues Found
+### Remaining Design Doc Inconsistencies
 
-1. **Copy-paste error in example usage (line 69):** `ops -e .env prod -e .env.local prod tail-logs` contains `"prod"` twice as a positional argument. Should be: `ops -e .env -e .env.local prod tail-logs`.
+1. **Key Design Decisions section still mentions `pflag.StringArrayP`** (bottom of section 4): The flag was changed to single-use `StringP` but the decision note still says `StringArrayP`. This is a leftover from the old design. Should be corrected before implementation to avoid confusion when the implementer reads the doc.
 
-2. **FR-4 internal inconsistency:** "Values injected from env-file are **never printed** to stdout or stderr by `ops` itself" but the very next sentence says `--dry-run` resolves and prints them. The intent is clear but the wording is contradictory. Recommended rewrite: "Values from env-file are not printed by `ops` outside of `--dry-run`; `--dry-run` resolves all variable references (including secrets) and prints the resulting shell lines."
+2. **Architecture section still says `ParseEnvFiles` (plural)**: The component design and data-flow diagram use `ParseEnvFile` (singular) correctly, but one line in the overview says `call internal.ParseEnvFiles(flags.EnvFiles)`. Should be `ParseEnvFile(flags.EnvFile)`.
 
-3. **Error message format not specified:** NFR-3 says the error message must include the file path but gives no example format. Consider defining a format string in the design doc (e.g., `env-file: open %s: no such file`) to make test assertions less brittle across implementations.
+3. **Three existing priority tests will break on the shell-wins change**: `TestResolveVar_OpsfileEnvScopedBeatsShellEnvScoped`, `TestResolveVar_OpsfileUnscopedBeatsShellEnvUnscoped`, and `TestResolveVar_ShellEnvUnscopedIsLastResort` all assert the old Opsfile-wins order. The implementation PR must update these — they must not be deleted, only corrected. See Section 9 above for details.
 
-4. **Open question not resolved in FR section:** The open question about `ParseEnvFiles([]string{})` vs skipping entirely is mentioned inline under Key Design Decisions but not captured as a formal spec. This should be resolved before implementation starts.
-
-5. **Existing `TestResolveVar_PriorityChain` level labels:** The test uses "L1"–"L4" labels that will shift meaning when the new levels 3 and 6 are inserted. The test logic will still be correct (the test doesn't use the labels internally) but comments/names should be updated in the PR to avoid confusion.
-
-6. **`-e` flag after positional:** Because `SetInterspersed(false)` stops flag parsing at the first non-flag arg, `ops prod -e .env cmd` will treat `-e .env` as positionals and pass them to `ParseOpsArgs`, causing a confusing error. This is a UX footgun worth documenting in `--help` or the README, even if not changed.
+4. **`.ops_secrets.env` gitignore guidance**: FR-5 mentions this should be added to `.gitignore` by convention; confirm this is covered in the `--help` text or README update as part of the implementation scope.
