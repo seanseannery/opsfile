@@ -191,6 +191,45 @@ func TestParseOpsFlags(t *testing.T) {
 			wantFlags: OpsFlags{List: true, Directory: "/tmp"},
 			wantPos:   []string{"prod"},
 		},
+		{
+			name:      "-e sets EnvFile",
+			input:     []string{"-e", ".env.prod", "prod", "cmd"},
+			wantFlags: OpsFlags{EnvFile: ".env.prod"},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:      "--env-file sets EnvFile",
+			input:     []string{"--env-file", "/path/to/.env", "prod", "cmd"},
+			wantFlags: OpsFlags{EnvFile: "/path/to/.env"},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:      "--env-file= sets EnvFile",
+			input:     []string{"--env-file=.env", "prod", "cmd"},
+			wantFlags: OpsFlags{EnvFile: ".env"},
+			wantPos:   []string{"prod", "cmd"},
+		},
+		{
+			name:       "duplicate -e is an error",
+			input:      []string{"-e", "a.env", "-e", "b.env", "prod", "cmd"},
+			wantErrSub: "only be specified once",
+		},
+		{
+			name:       "duplicate --env-file is an error",
+			input:      []string{"--env-file", "a.env", "--env-file", "b.env"},
+			wantErrSub: "only be specified once",
+		},
+		{
+			name:       "-e with missing argument",
+			input:      []string{"-e"},
+			wantErrSub: "flag needs an argument",
+		},
+		{
+			name:      "-e combined with other flags",
+			input:     []string{"-d", "-e", ".env", "-s", "prod", "cmd"},
+			wantFlags: OpsFlags{DryRun: true, EnvFile: ".env", Silent: true},
+			wantPos:   []string{"prod", "cmd"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -221,9 +260,14 @@ func TestParseOpsFlags_HelpOutput(t *testing.T) {
 	require.ErrorIs(t, gotErr, ErrHelp)
 
 	output := buf.String()
-	for _, want := range []string{"-D", "-d", "-l", "-s", "-v"} {
+	for _, want := range []string{"-D", "-d", "-e", "-l", "-s", "-v"} {
 		assert.Contains(t, output, want)
 	}
+	// FR-4: --dry-run note about secret visibility must appear in help.
+	assert.Contains(t, output, "--dry-run", "help must mention --dry-run secret visibility")
+	assert.Contains(t, output, "secret", "help must note that secret values are printed by --dry-run")
+	// FR-6: flag-position constraint note must appear in help.
+	assert.Contains(t, output, "before", "help must note that flags must appear before env/command args")
 
 	// Verify unknown flag error includes the flag name.
 	_, _, unknownErr := ParseOpsFlags([]string{"--foobar"}, &buf)

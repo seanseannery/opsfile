@@ -56,6 +56,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	envFileVars, err := loadEnvFile(flags.EnvFile, dir)
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+
 	if flags.List {
 		absPath := filepath.Join(dir, opsFileName)
 		displayPath := absPath
@@ -74,7 +80,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	resolved, err := internal.Resolve(args.OpsCommand, args.OpsEnv, commands, vars)
+	resolved, err := internal.Resolve(args.OpsCommand, args.OpsEnv, commands, vars, envFileVars)
 	if err != nil {
 		slog.Error("resolving command: " + err.Error())
 		os.Exit(1)
@@ -111,6 +117,22 @@ func resolveOpsfileDir(flagDir string) (string, error) {
 		return flagDir, nil
 	}
 	return getClosestOpsfilePath()
+}
+
+const defaultEnvFileName = ".ops_secrets.env"
+
+// loadEnvFile resolves and parses the env file. If envFilePath is set, that
+// file is used (error if missing). Otherwise, .ops_secrets.env next to the
+// Opsfile is loaded if present (silently skipped if absent).
+func loadEnvFile(envFilePath, opsfileDir string) (internal.OpsVariables, error) {
+	if envFilePath != "" {
+		return internal.ParseEnvFile(envFilePath)
+	}
+	defaultPath := filepath.Join(opsfileDir, defaultEnvFileName)
+	if _, err := os.Stat(defaultPath); err != nil {
+		return nil, nil // absent default is silent no-op
+	}
+	return internal.ParseEnvFile(defaultPath)
 }
 
 // getClosestOpsfilePath returns the directory containing the nearest Opsfile,
