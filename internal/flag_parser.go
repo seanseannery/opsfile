@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 
 	pflag "github.com/spf13/pflag"
 )
@@ -19,6 +20,7 @@ var ErrHelp = errors.New("help requested")
 // OpsFlags holds the values of ops-level flags parsed from the command line.
 type OpsFlags struct {
 	Directory string // -D / --directory
+	EnvFile   string // -e / --env-file
 	DryRun    bool   // -d / --dry-run
 	List      bool   // -l / --list
 	Silent    bool   // -s / --silent
@@ -47,6 +49,7 @@ func ParseOpsFlags(osArgs []string, usageOutput io.Writer) (OpsFlags, []string, 
 
 	dir := fs.StringP("directory", "D", "", "use Opsfile in the given `directory`")
 	dryRun := fs.BoolP("dry-run", "d", false, "print commands without executing")
+	envFile := fs.StringP("env-file", "e", "", "load variables from env `file` (default: .ops_secrets.env if present)")
 	silent := fs.BoolP("silent", "s", false, "execute without printing output")
 	list := fs.BoolP("list", "l", false, "list available commands and environments")
 	ver := fs.BoolP("version", "v", false, "print the ops version and exit")
@@ -59,6 +62,10 @@ It locates the 'Opsfile' in this directory (or the nearest parent directory) and
 Usage: ops [flags] <environment> <command> [command-args]
       ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'
 
+Note: All flags (including -e) must appear before the environment and command
+      arguments. --dry-run will print resolved commands including secret values
+      loaded from env files.
+
 Flags:`)
 		fmt.Fprintln(fs.Output())
 		fs.PrintDefaults()
@@ -69,25 +76,35 @@ Flags:`)
 	// (e.g. "--help -D /path" must still parse -D).
 	helpRequested := false
 	filtered := make([]string, 0, len(osArgs))
+	envFileCount := 0
 	for _, a := range osArgs {
 		switch a {
 		case "-h", "--help", "-?":
 			helpRequested = true
 		default:
+			if a == "-e" || a == "--env-file" || strings.HasPrefix(a, "--env-file=") {
+				envFileCount++
+			}
 			filtered = append(filtered, a)
 		}
+	}
+
+	if envFileCount > 1 {
+		return OpsFlags{}, nil, errors.New("-e / --env-file may only be specified once")
 	}
 
 	if err := fs.Parse(filtered); err != nil {
 		return OpsFlags{}, nil, err
 	}
 
+	flags := OpsFlags{Directory: *dir, EnvFile: *envFile, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}
+
 	if helpRequested {
 		fs.Usage()
-		return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, nil, ErrHelp
+		return flags, nil, ErrHelp
 	}
 
-	return OpsFlags{Directory: *dir, DryRun: *dryRun, List: *list, Silent: *silent, Version: *ver}, fs.Args(), nil
+	return flags, fs.Args(), nil
 }
 
 // ParseOpsArgs parses the positional non-flag arguments returned by ParseOpsFlags into

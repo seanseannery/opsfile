@@ -32,10 +32,18 @@ type ResolvedCommand struct {
 //  3. Error
 //
 // Variable substitution: $(VAR_NAME) tokens whose content is a bare identifier
-// are resolved against vars using env-scoped priority (env_VAR_NAME before
-// VAR_NAME). $(…) tokens containing spaces or other non-identifier characters
-// are passed through unchanged, preserving shell subcommand syntax.
-func Resolve(commandName, env string, commands map[string]OpsCommand, vars OpsVariables) (ResolvedCommand, error) {
+// are resolved against vars and envFileVars using a six-level priority chain
+// (shell wins — matches Docker Compose / Terraform convention):
+//  1. Shell env-scoped:    os.LookupEnv("env_VAR")
+//  2. Opsfile env-scoped:  vars["env_VAR"]
+//  3. Env-file env-scoped: envFileVars["env_VAR"]
+//  4. Shell unscoped:      os.LookupEnv("VAR")
+//  5. Opsfile unscoped:    vars["VAR"]
+//  6. Env-file unscoped:   envFileVars["VAR"]
+//
+// $(…) tokens containing spaces or other non-identifier characters are passed
+// through unchanged, preserving shell subcommand syntax.
+func Resolve(commandName, env string, commands map[string]OpsCommand, vars, envFileVars OpsVariables) (ResolvedCommand, error) {
 	cmd, ok := commands[commandName]
 	if !ok {
 		return ResolvedCommand{}, fmt.Errorf("command %q not found", commandName)
@@ -67,7 +75,7 @@ func Resolve(commandName, env string, commands map[string]OpsCommand, vars OpsVa
 			}
 			break
 		}
-		substituted, err := substituteVars(line, env, vars)
+		substituted, err := substituteVars(line, env, vars, envFileVars)
 		if err != nil {
 			return ResolvedCommand{}, err
 		}
@@ -90,7 +98,7 @@ func selectLines(cmd OpsCommand, env string) ([]string, error) {
 // substituteVars replaces $(VAR_NAME) references in a single shell line.
 // Only tokens whose content passes isIdentifier are treated as Opsfile
 // variable references; all others are left unchanged.
-func substituteVars(line, env string, vars OpsVariables) (string, error) {
+func substituteVars(line, env string, vars, envFileVars OpsVariables) (string, error) {
 	var b strings.Builder
 	remaining := line
 	for {
@@ -112,7 +120,7 @@ func substituteVars(line, env string, vars OpsVariables) (string, error) {
 		remaining = remaining[end+1:]
 
 		if isIdentifier(token) {
-			val, err := resolveVar(token, env, vars)
+			val, err := resolveVar(token, env, vars, envFileVars)
 			if err != nil {
 				return "", err
 			}
@@ -127,23 +135,40 @@ func substituteVars(line, env string, vars OpsVariables) (string, error) {
 	return b.String(), nil
 }
 
-// resolveVar looks up varName using a four-level priority chain:
-//  1. Opsfile env-scoped  (vars["env_VAR"])
-//  2. Shell env-scoped    (os.Getenv("env_VAR"))
-//  3. Opsfile unscoped    (vars["VAR"])
-//  4. Shell unscoped      (os.Getenv("VAR"))
-func resolveVar(varName, env string, vars OpsVariables) (string, error) {
-	if val, ok := vars[env+"_"+varName]; ok {
+// resolveVar looks up varName using a six-level priority chain (shell wins):
+//  1. Shell env-scoped    (os.LookupEnv("env_VAR"))
+//  2. Opsfile env-scoped  (vars["env_VAR"])
+//  3. Env-file env-scoped (envFileVars["env_VAR"])
+//  4. Shell unscoped      (os.LookupEnv("VAR"))
+//  5. Opsfile unscoped    (vars["VAR"])
+//  6. Env-file unscoped   (envFileVars["VAR"])
+func resolveVar(varName, env string, vars, envFileVars OpsVariables) (string, error) {
+	scopedName := env + "_" + varName
+
+	// Priority 1: shell env-scoped
+	if val, ok := os.LookupEnv(scopedName); ok {
 		return val, nil
 	}
-	if val, ok := os.LookupEnv(env + "_" + varName); ok {
+	// Priority 2: Opsfile env-scoped
+	if val, ok := vars[scopedName]; ok {
 		return val, nil
 	}
-	if val, ok := vars[varName]; ok {
+	// Priority 3: env-file env-scoped
+	if val, ok := envFileVars[scopedName]; ok {
 		return val, nil
 	}
+	// Priority 4: shell unscoped
 	if val, ok := os.LookupEnv(varName); ok {
 		return val, nil
 	}
+	// Priority 5: Opsfile unscoped
+	if val, ok := vars[varName]; ok {
+		return val, nil
+	}
+	// Priority 6: env-file unscoped
+	if val, ok := envFileVars[varName]; ok {
+		return val, nil
+	}
+
 	return "", fmt.Errorf("variable %q not defined for environment %q", varName, env)
 }
