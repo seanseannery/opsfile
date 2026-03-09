@@ -21,6 +21,7 @@ Related: [Issue #23](https://github.com/seanseannery/opsfile/issues/23)
 - Supporting shell expansion or substitution inside `.env` file values
 - Supporting `export` keyword or `KEY` lines without `=` (bash-style .env extensions)
 - Adding a system-wide or per-user default env file path
+- Stacking `.ops_secrets.env` and `-e` files together (explicit `-e` replaces the default)
 
 ---
 
@@ -46,22 +47,40 @@ prod_API_KEY='sk-...'
 
 ### FR-3: Resolution Priority Chain (Updated)
 
+Matches the Docker Compose / Terraform convention: shell environment beats committed config, and env-file is the lowest-priority fallback layer.
+
 | Priority | Source | Key |
 |----------|--------|-----|
-| 1 (highest) | Opsfile env-scoped | `vars["env_VAR"]` |
-| 2 | Shell env-scoped | `os.LookupEnv("env_VAR")` |
+| 1 (highest) | Shell env-scoped | `os.LookupEnv("env_VAR")` |
+| 2 | Opsfile env-scoped | `vars["env_VAR"]` |
 | 3 | Env-file env-scoped | `envFileVars["env_VAR"]` |
-| 4 | Opsfile unscoped | `vars["VAR"]` |
-| 5 | Shell unscoped | `os.LookupEnv("VAR")` |
+| 4 | Shell unscoped | `os.LookupEnv("VAR")` |
+| 5 | Opsfile unscoped | `vars["VAR"]` |
 | 6 (lowest) | Env-file unscoped | `envFileVars["VAR"]` |
 
-Opsfile and shell environment variables always take precedence over env-file values — the flag is purely additive.
+Shell environment always wins — a value exported in the operator's shell overrides both Opsfile-committed config and env-file values. Env-file is purely a fallback for values not set anywhere else.
 
 ### FR-4: Security / UX
 - Values are not printed outside of `--dry-run`; `ops` never echoes raw env-file contents to stdout or stderr.
 - `--dry-run` resolves all variable references — including those sourced from env-file — and prints the resulting shell lines. Secret values will therefore be visible in `--dry-run` output. The `--help` text must include a note to this effect.
 
-### FR-5: Flag Position Constraint
+### FR-5: Default Env File (`.ops_secrets.env`)
+
+If no `-e` / `--env-file` flag is provided, `ops` automatically looks for `.ops_secrets.env` in the same directory as the located Opsfile. If the file exists, it is loaded as the env-file layer exactly as if `-e .ops_secrets.env` had been passed.
+
+If one or more `-e` flags **are** provided, the explicit file(s) are used and `.ops_secrets.env` is **not** loaded — explicit flags replace the default, they do not stack with it.
+
+```bash
+# No -e flag: loads .ops_secrets.env if present (silently skipped if absent)
+ops prod rollback
+
+# -e flag provided: uses only .env.prod, ignores .ops_secrets.env
+ops -e .env.prod prod rollback
+```
+
+`.ops_secrets.env` should be added to `.gitignore` by convention (documented in `--help` and README).
+
+### FR-6: Flag Position Constraint
 Because `SetInterspersed(false)` stops flag parsing at the first positional argument, `-e` flags must appear **before** the environment and command positionals. `ops prod -e .env cmd` will silently ignore `-e .env`. The `--help` output must document this constraint to prevent unexpected "variable not defined" errors.
 
 ### Example Usage
@@ -137,11 +156,11 @@ ParseOpsFile()           ← unchanged, produces vars OpsVariables
 Resolve(cmd, env, commands, vars, envFileVars)
   │
   └─ resolveVar(name, env, vars, envFileVars)
-       1. vars[env_NAME]
-       2. os.LookupEnv(env_NAME)
+       1. os.LookupEnv(env_NAME)          ← shell wins
+       2. vars[env_NAME]
        3. envFileVars[env_NAME]   ← NEW
-       4. vars[NAME]
-       5. os.LookupEnv(NAME)
+       4. os.LookupEnv(NAME)
+       5. vars[NAME]
        6. envFileVars[NAME]       ← NEW
 ```
 
@@ -153,11 +172,13 @@ main()
   │──────────────────────────► flag_parser.go
   │◄── OpsFlags{EnvFiles: [...]}
   │
-  │ [if EnvFiles non-empty]
-  │ ParseEnvFiles(flags.EnvFiles)
+  │ [resolve env-file paths]
+  │ if len(flags.EnvFiles) > 0: use flags.EnvFiles
+  │ else: check for .ops_secrets.env next to Opsfile
+  │ ParseEnvFiles(paths)
   │──────────────────────────► envfile_parser.go
   │◄── envFileVars, err
-  │    [error if file missing/unreadable]
+  │    [error if file missing/unreadable; .ops_secrets.env absence is silent]
   │
   │ ParseOpsFile(path)
   │──────────────────────────► opsfile_parser.go
@@ -174,9 +195,11 @@ main()
 
 ### Key Design Decisions
 
+- **Shell env beats Opsfile (Docker/Terraform convention)**: Matches the most common mental model — a value exported in your shell always wins. This makes the tool less surprising for operators coming from Docker Compose or Terraform workflows.
+- **Env-file replaces default, not stacks**: When `-e` is given, `.ops_secrets.env` is ignored entirely. Stacking both would create a third resolution layer and make debugging variable origins significantly harder. One env-file source at a time keeps the chain predictable.
+- **`.ops_secrets.env` absence is silent**: Missing the default file is not an error — it's the common case for repos that don't use it yet. Only explicit `-e` paths error on absence.
 - **Separate `envFileVars` parameter over merged map**: Passing `envFileVars` as a distinct parameter to `resolveVar` makes the priority boundary explicit in code and in tests. Merging into a single map before resolution would require key-name tricks to preserve ordering.
 - **Reuse `extractVariableValue`**: The quoting and comment-stripping logic in `opsfile_parser.go` is already correct and tested. `envfile_parser.go` calls it directly rather than duplicating.
-- **Validate files before execution**: Checking file existence and readability in `main.go` immediately after `ParseOpsFlags` (before `ParseOpsFile`) ensures operators see a clear error and no command runs with incomplete variable context.
 - **`pflag.StringArrayP` for repeatable flag**: `pflag` already supports this; `-e a -e b` produces `[]string{"a","b"}` in declaration order.
 
 ### Files to Create / Modify
@@ -189,7 +212,7 @@ main()
 | `internal/command_resolver.go` | Modify | Add `envFileVars OpsVariables` param to `Resolve`, `substituteVars`, `resolveVar`; add priority 3 and 6 lookups |
 | `internal/command_resolver_test.go` | Modify | Add tests for env-file priority levels 3 and 6; rename existing `TestResolveVar_PriorityChain` subtests from "level1–level4" to "p1–p4" to avoid collision with the new 6-level numbering |
 | `internal/flag_parser_test.go` | Modify | Add tests: single and multiple `-e` flags populate `EnvFiles` in order |
-| `cmd/ops/main.go` | Modify | Call `ParseEnvFiles` after flag parsing; pass `envFileVars` to `Resolve` |
+| `cmd/ops/main.go` | Modify | Resolve env-file paths (explicit `-e` or default `.ops_secrets.env`); call `ParseEnvFiles`; pass `envFileVars` to `Resolve`; update `resolveVar` priority order |
 
 ---
 
