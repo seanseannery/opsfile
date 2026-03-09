@@ -39,46 +39,63 @@ When the user approves spinning up a team, follow this software development life
 1. Determine a short branch name from the issue (following CONTRIBUTING.md conventions, e.g. `feat/issue-title` or `fix/issue-42`)
 2. Create a feature branch off `main`: `git checkout -b <branch-name> main`
 3. Push the branch so worktrees can use it: `git push -u origin <branch-name>`
-4. Create the agent team: use TeamCreate with a descriptive team name based on the issue
+4. Create the agent team: use TeamCreate with a descriptive team name based on the issue. All agents MUST use the same worktree for this session.
 
 ### Step 2: Create initial tasks
 
 Create tasks using TaskCreate for the SDLC phases:
 
-1. **Design task** — Current session assumes role of `architect` (`subagent_type: "architect"`, `isolation: "worktree"`): Research the codebase and design the architecture for this issue. Author a design doc in `./docs/` using the template `./docs/templates/feature-doc.md`. Reference the issue details. Present the design for approval.
-2. **QA design review task** — assigned to `qa`: Review completed design doc, and provide feedback on potential quality or ux issues with the architecture. Write a test case document in `./docs/testcases` following the template `./docs/templates/test-plan.md`
-3. **Iterate on Design doc task** - After `qa` review is complete,  Iterate on design doc with any QA feedback. 
-4. **User feedback** - Present design doc to user with summary and ask for feedback/updates before implementation.
-5. **Implementation tasks** — assigned to `backend-1` and `backend-2`: MUST NOT start implementation before user approval. Implement the feature according to the approved design doc. Split work logically (e.g., core logic vs CLI wiring, or by component). Run `make lint` and `make test` before marking complete.
-6. **QA signoff task** — assigned to `qa` after implementation is complete: Review all code changes, write additional tests for edge cases, run full test suite, validate behavior against the design doc requirements. Report any issues found.
+1. **Design task** — Performed inline by the current session (team lead) acting as an `architect` subagent. Research the codebase and design the architecture for this issue. Author a design doc in `./docs/` using the template `./docs/templates/feature-doc.md`. Commit and push the doc to the feature branch but do not summarize for end user. Present the design for approval.
+2. **QA design review task** — assigned to `qa`: Review proposed design doc, and provide feedback on potential quality or ux pain points with the architecture. Write a test case document in `./docs/testplans` following the template `./docs/templates/test-plan.md`
+3. **Iterate on Design doc task** — After `qa` review is complete, iterate on design doc with any QA feedback.
+4. **User feedback** — Present design doc to the user without a summary, just a link to the doc,  and ask for feedback/updates before beginning implementation.
+5. **Implementation tasks** — assigned to engineers (spawned after user approves design in Task #4): MUST NOT start implementation before user approval. Implement the feature according to the approved design doc. Split work logically (e.g., core logic vs CLI wiring, or by component). Run `make lint` and `make test` before marking complete. Commit and push all changes to the feature branch before reporting done.
+6. **QA signoff task** — assigned to `qa` after implementation is complete: Pull latest from feature branch, review all code changes, write additional tests for edge cases, run full test suite, validate behavior against the design doc requirements. Report any issues found.
 
-Set up dependencies: implementation tasks are blocked by the design task. QA task is blocked by implementation tasks.
+Set up dependencies: implementation tasks are blocked by Task #4 (user approval). QA signoff is blocked by implementation tasks.
 
-### Step 3: Spawn the team
+### Step 3: Spawn the initial team (QA only)
 
-Spawn agents using the Agent tool. All agents that modify code or docs MUST use `isolation: "worktree"` so they work in separate worktrees on the same feature branch:
+Spawn only QA upfront. Engineers are spawned later after the user approves the design (Step 4).
 
-1. **qa** — `subagent_type: "qa"`, `isolation: "worktree"`. Instruct to wait for design task to complete,implementation tasks to complete, then review all changes, run tests in testplan, and validate. Tell them their task ID.
+1. **qa** — `subagent_type: "qa"`, `isolation: "worktree"`, `run_in_background: true`. Tell them:
+   - Their task IDs (#2 for design review, #6 for signoff)
+   - **Do not read files or explore the codebase until you receive a message that a task is ready for you.** Do not poll TaskList on your own — wait for a message from team-lead.
+   - For design review (Task #2): pull the latest from the feature branch before reading the design doc.
+   - For signoff (Task #6): pull latest from the feature branch before reviewing code.
 
-2. Spin up N additional engineers based on users previous "How many engineers?" response. The subagent_type should default to backend-engineer unless otherwise specified
+### Step 3.5: Complete the design, then spawn engineers
 
-  **[type]-eng-[1]** - `subagent_type: "backend-engineer"`, `isolation: "worktree"`. Instruct to wait for user approval of design task.  Provide the design doc and test plan, then claim and work on their implementation task. Tell them their task ID and to check TaskList for when the design is approved and unblocked.
+After QA review (Task #2) and design iteration (Task #3) are complete and the **user has approved the design (Task #4)**:
 
-  **[type]-eng-[n]** — `subagent_type: "[type]-engineer"`, `isolation: "worktree"`. Same instructions as the first engineer but for the next parallelizable implementation task. Tell them their task ID.
+Spawn N engineers based on the user's earlier "How many engineers?" response. Default `subagent_type` is `backend-engineer` unless otherwise specified earlier.
 
-All agents should be spawned with `run_in_background: true`.
+  **If N=1:** Spawn the single engineer, they work in the same worktree as qa and teamlead —  no separate commit/push step needed.
+
+  **[type]-eng-[1]** — `subagent_type: "backend-engineer"`, `run_in_background: true` (no isolation if N=1). Tell them:
+  - Their task ID (#5 or whichever implementation task)
+  - The feature branch name
+  - The design doc path and test plan path
+  - **Do not read files or explore the codebase until ready to implement.** Do not poll — start working immediately since design is already approved.
+  - If using a worktree (N>1): commit and push all changes to the feature branch before marking the task complete.
+
+  **[type]-eng-[n]** — `isolation: "worktree"`, same instructions as above but for the next parallelizable implementation task.
 
 ### Step 4: Coordinate
 
-- When initial design task is complete, notify QA to review
-- When QA has completed design review and the design update is complete, notify user for feedback and signoff
-- When implementation tasks complete, notify QA to begin
-- When QA completes, report final status to the user and create a pull request on github
-- Shut down all agents when work is complete
+- After completing the design inline, commit and push the design doc to the feature branch, then notify QA to begin Task #2
+- When QA design review is complete and design iteration (Task #3) is done, present to user for approval (Task #4)
+- After user approves, spawn engineers (Step 3.5) and notify them to begin
+- When implementation tasks complete: **before notifying QA**, verify the feature branch has the implementation commits by running `git log --oneline origin/<feature-branch> | head -5`. If commits are missing, ask the engineer to push before proceeding.
+- When branch is confirmed up to date, notify QA to begin signoff (Task #6)
+- When QA completes signoff, create a pull request on GitHub using the `.github/pull_request_template.md` structure
+- Shut down all agents when work is complete. Switch to the main worktree and clean up any unused worktrees.
 
 ### Key rules
 
-- All agents modifying code/docs use `isolation: "worktree"` on the SAME feature branch
-- The architect uses `mode: "plan"` — their design MUST be approved by user and `qa` before implementation begins
+- The team lead performs design work inline (no architect sub-agent). This avoids worktree copy overhead for docs-only work.
+- All agents modifying code use `isolation: "worktree"` on the SAME feature branch and worktree
+- Engineers are spawned only after user approves the design — not upfront
+- Implementation changes must be committed and pushed to the feature branch before QA signoff begins
 - If any agent gets stuck or has questions, surface them to the user
-- frontend engineers should only be assigned work that is website or graphical user interface related.
+- Frontend engineers should only be assigned work that is website or graphical user interface or updating user READMEs.
