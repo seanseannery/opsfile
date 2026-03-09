@@ -31,7 +31,8 @@ go.work.sum
 # IDE and AI Agent Specific Settings
 .idea/
 .vscode/
-.claude
+.claude/worktrees
+.claude/settings.local.json
 
 # Macos BS
 **/.DS_Store

@@ -1,105 +1,83 @@
-# Supported CLI Flags
+# Feature: Supported CLI Flags
 
-## Dry-Run Mode
 
-### Functional Requirements
-
-- When `--dry-run` or `-d` is passed, `ops` prints the fully resolved shell lines to stdout without executing them
-- Each line is printed on its own line via `fmt.Println`
-- If `--silent` / `-s` is also set, even the dry-run output is suppressed (nothing is printed and nothing is executed)
-- Variable substitution and environment selection still occur in dry-run mode -- the user sees the exact commands that would be executed
-
-### Implementation Overview
-
-Dry-run mode is handled in `cmd/ops/main.go` in the `main()` function.
-
-**Data flow:**
-
-1. After `Resolve()` produces a `ResolvedCommand`, `main()` checks `flags.DryRun`
-2. If true and `!flags.Silent`, it loops over `resolved.Lines` and prints each with `fmt.Println`
-3. The function returns immediately without calling `Execute()`
-
-**Key symbols:**
-
-- `OpsFlags.DryRun` -- the flag value from `ParseOpsFlags()`
-- `OpsFlags.Silent` -- checked in combination with `DryRun` to suppress output
-- The dry-run branch in `main()` at approximately lines 63-69
-
-## Help / Usage Output
-
-### Functional Requirements
-
-- When `-h`, `--help`, or `-?` is passed, `ops` prints a usage banner and flag descriptions to stderr, then exits with code 0
-- The usage banner includes:
-  - A description of what `ops` does
-  - The invocation syntax: `ops [flags] <environment> <command> [command-args]`
-  - Examples: `ops preprod open-dashboard`, `ops --dry-run prod tail-logs`
-  - A list of all available flags with their descriptions
-- `-?` is handled specially before `flag.Parse` because it is not a valid Go `flag` package flag name
-
-### Implementation Overview
-
-Help output is implemented in `internal/flag_parser.go` within `ParseOpsFlags()`.
-
-**Data flow:**
-
-1. Before `fs.Parse()`, `slices.Contains(osArgs, "-?")` checks for the `-?` token; if found, calls `fs.Usage()` and returns `ErrHelp`
-2. For `-h` and `--help`, the standard `flag` package triggers `fs.Usage()` and returns `flag.ErrHelp`, which is translated to the `ErrHelp` sentinel
-3. `fs.Usage` is a closure that writes the banner text with `fmt.Fprint(fs.Output(), ...)` and then calls `fs.PrintDefaults()` for flag descriptions
-4. In `main()`, `errors.Is(err, internal.ErrHelp)` catches the sentinel and calls `os.Exit(0)`
-
-**Key symbols:**
-
-- `ErrHelp` -- package-level sentinel: `errors.New("help requested")`
-- `fs.Usage` closure in `ParseOpsFlags()` -- defines the help text
-- The `-?` pre-check using `slices.Contains`
-
-## Version Reporting
-
-### Functional Requirements
-
-- When `-v` or `--version` is passed, `ops` prints its version string and exits with code 0
-- The output format is: `ops version <version> (<os>/<arch>)` (e.g. `ops version 0.0.1 (darwin/arm64)`)
-- The version is set at build time via Go linker flags; the default is `0.0.1`
-
-### Implementation Overview
-
-Version reporting is split across two files.
-
-**`internal/version.go`:**
-
-- Declares `var Version = "0.0.1"` -- the default version
-- Build-time override: `go build -ldflags="-X sean_seannery/opsfile/internal.Version=1.2.3" ./cmd/ops/`
-
-**`cmd/ops/main.go`:**
-
-- After parsing flags, checks `flags.Version`
-- If true, prints `fmt.Printf("ops version %s (%s/%s)\n", internal.Version, runtime.GOOS, runtime.GOARCH)` and calls `os.Exit(0)`
-
-## List Commands (`--list` / `-l`) — Issue #19
+## 1. Problem Statement & High-Level Goals
 
 ### Problem
+The `ops` CLI needs to support standard operational flags that modify its behavior — such as previewing commands without execution, suppressing output, printing version info, listing available commands, specifying an alternate Opsfile directory, and displaying usage help. Without these flags, users have no way to inspect, debug, or control `ops` behavior beyond running commands directly.
 
-There is no way to discover what commands and environments an Opsfile provides without opening the file and reading it manually. Under time-pressure (e.g. an incident), this adds unnecessary friction.
+### Goals
+- [x] Provide `--dry-run` / `-d` to preview resolved commands without executing them
+- [x] Provide `--silent` / `-s` to suppress command output during execution
+- [x] Provide `--version` / `-v` to display the current ops version and build info
+- [x] Provide `--help` / `-h` / `-?` to display usage information
+- [x] Provide `--directory` / `-D` to specify an alternate Opsfile location
+- [x] Provide `--list` / `-l` to list available commands and environments from the Opsfile
 
-### Functional Requirements
+### Non-Goals
+- Flags are not subcommand-specific; they apply globally to `ops`
+- No interactive/prompt-based flag input
+- No configuration file for default flag values
 
-- When `--list` or `-l` is passed, `ops` prints a summary of the Opsfile's available environments and commands, then exits with code 0
-- **Environment listing:** all unique, explicitly defined environment names across every command are collected into a sorted, deduplicated list and printed under an "Environments" heading. The synthetic name `default` is included only if at least one command defines a `default:` block
-- **Command listing:** every command is printed in Opsfile-declaration order with its description (if any) and the environments it supports
-- **Descriptions from comments:** a `#` comment line immediately preceding a command declaration (e.g. `# Tail CloudWatch logs`) is captured as that command's description. Only the single comment line directly above the command name line is used. If no such comment exists, the description is left blank (no error)
-- **No execution:** when `--list` is active, no command resolution or execution occurs — even if an environment and command are supplied on the CLI
-- **`--help` integration:** when `-h`, `--help`, or `-?` is passed, after printing the standard flag/usage text, `ops` attempts to locate and parse the Opsfile and appends the same command listing. If the Opsfile cannot be found or parsed, the help output is still shown (silent failure for the listing portion only)
-- **`--directory` interaction:** if `-D <dir>` is combined with `--list`, the listing uses the Opsfile from the specified directory
+---
 
-### Example Output
+## 2. Functional Requirements
 
-Given the example Opsfile at `examples/Opsfile`:
+### FR-1: Dry-Run Mode (`--dry-run` / `-d`)
+When `--dry-run` or `-d` is passed, `ops` prints the fully resolved shell lines to stdout without executing them. Each line is printed on its own line via `fmt.Println`. Variable substitution and environment selection still occur — the user sees the exact commands that *would* be executed. If `--silent` is also set, even the dry-run output is suppressed (nothing is printed and nothing is executed).
 
+### FR-2: Silent Mode (`--silent` / `-s`)
+When `--silent` or `-s` is passed, command execution proceeds normally but stdout/stderr output is not explicitly suppressed at the `ops` level — the executor connects stdin/stdout/stderr to the terminal. Silent mode's primary effect is suppressing dry-run output when combined with `--dry-run`.
+
+### FR-3: Version Reporting (`--version` / `-v`)
+When `-v` or `--version` is passed, `ops` prints its version string and exits with code 0. The output format is: `ops version <version> (commit: <commit>) <os>/<arch>` (e.g. `ops version 0.8.5 (commit: abc1234) darwin/arm64`). The version and commit are set at build time via Go linker flags; defaults are `0.0.0-dev` and `none`.
+
+### FR-4: Help / Usage Output (`--help` / `-h` / `-?`)
+When `-h`, `--help`, or `-?` is passed, `ops` prints a usage banner and flag descriptions to stderr, then exits with code 0. All help tokens are stripped from args before parsing so that flags appearing after the help flag (e.g. `--help -D /path`) are still parsed. The usage banner includes the version info, a description of what `ops` does, invocation syntax, an example, and the full list of available flags via `pflag.PrintDefaults()`. When an Opsfile is discoverable, help output also appends a listing of available commands and environments (best-effort; Opsfile errors are silently ignored).
+
+### FR-5: Directory Override (`--directory` / `-D`)
+When `-D <dir>` or `--directory <dir>` is passed, `ops` uses the Opsfile from the specified directory instead of walking parent directories. This interacts with all other flags — `--list` and `--help` will use the specified directory's Opsfile.
+
+### FR-6: List Commands (`--list` / `-l`)
+When `--list` or `-l` is passed, `ops` prints a summary of the Opsfile's available environments and commands, then exits with code 0. No command resolution or execution occurs — even if an environment and command are also supplied on the CLI. See the List Commands section below for full details.
+
+### Example Usage
+
+**Dry-run preview:**
+```bash
+$ ops --dry-run prod tail-logs
+aws logs tail /ecs/prod-app --follow --since 5m
 ```
+
+**Version output:**
+```bash
+$ ops --version
+ops version 0.8.5 (commit: abc1234) darwin/arm64
+```
+
+**Help output:**
+```bash
+$ ops --help
+ops version 0.8.5 (commit: abc1234) darwin/arm64
+
+The 'ops' command runs commonly-used live-operation commands...
+
+Usage: ops [flags] <environment> <command> [command-args]
+      ex. 'ops preprod open-dashboard' or 'ops --dry-run prod tail-logs'
+
+Flags:
+  -D, --directory directory   use Opsfile in the given directory
+  -d, --dry-run               print commands without executing
+  -l, --list                  list available commands and environments
+  -s, --silent                execute without printing output
+  -v, --version               print the ops version and exit
+```
+
+**List output:**
+```bash
 $ ops --list
 
-Commands Found in [./relative/path/to/Opsfile]:
+Commands Found in [./Opsfile]:
 
 Environments:
   default  local  preprod  prod
@@ -110,134 +88,156 @@ Commands:
   list-instance-ips  List the private IPs of running instances
 ```
 
-When no descriptions exist, the right-hand column is simply empty:
+---
 
+## 3. Non-Functional Requirements
+
+| ID | Category | Requirement | Notes |
+|----|----------|-------------|-------|
+| NFR-1 | Performance | Flag parsing adds negligible overhead (< 1ms) | Uses pflag which is standard in Go CLIs |
+| NFR-2 | Compatibility | All flags work on Linux, macOS, and Windows | Uses Go standard library + pflag |
+| NFR-3 | Reliability | Unknown flags produce a clear error and exit non-zero | pflag returns an error for unrecognised flags |
+| NFR-4 | Maintainability | New flags only require adding to `OpsFlags` struct and registering with pflag | Centralized in `flag_parser.go` |
+
+---
+
+## 4. Architecture & Implementation Proposal
+
+### Overview
+Flag parsing is centralized in `internal/flag_parser.go` using the `pflag` library. The `ParseOpsFlags` function parses all ops-level flags from the raw CLI arguments and returns an `OpsFlags` struct plus remaining positional arguments. `cmd/ops/main.go` inspects the flags struct to determine which early-exit path to take (help, version, list) before proceeding to command resolution and execution.
+
+### Component Design
+
+**`internal/flag_parser.go`** — Defines `OpsFlags` struct, `ErrHelp` sentinel, `ParseOpsFlags()`, and `ParseOpsArgs()`. Uses `pflag.NewFlagSet` with `ContinueOnError` error handling and `SetInterspersed(false)` to stop flag parsing at the first positional argument. Help tokens (`-h`, `--help`, `-?`) are stripped before parsing to ensure all other flags are still processed.
+
+**`internal/version.go`** — Declares `Version` and `Commit` variables with defaults (`0.0.0-dev` / `none`), overridden at build time via `-ldflags`.
+
+**`internal/lister.go`** — `FormatCommandList()` writes a formatted summary of environments and commands to an `io.Writer`, enabling testability without touching stdout.
+
+**`cmd/ops/main.go`** — Sequences the flag checks: help → version → parse Opsfile → list → parse args → resolve → dry-run check → execute.
+
+### Data Flow
 ```
-Commands:
-  show-profile
-  tail-logs
-  list-instance-ips
-```
-
-### Acceptance Criteria
-
-1. `-l` and `--list` both trigger the listing and exit 0
-2. Environments are deduplicated across all commands and listed in the order they appear in Opsfile
-3. Commands are listed in the order they appear in the Opsfile (parser insertion order)
-4. Description is extracted from the first line of a `# comment` block immediately above the `command-name:` declaration; for multi-line comment blocks, the first line (title/summary) is used as the description
-5. Missing description produces a blank — no error
-6. Passing `--list` alongside a command and environment does not execute anything
-7. `--help` appends the command listing after the flag summary; Opsfile errors are silently ignored in this path
-8. Unit tests for description extraction in the parser
-9. Integration tests for `--list` output format (environments + commands + descriptions)
-10. Integration test confirming `--help` shows command listing when an Opsfile is available
-11. README.md, this doc, github site and the help/usage banner updated with the new flag
-12. Example Opsfiles do not need changes — existing `#` comments already follow the convention
-
-### Implementation Plan
-
-The feature touches four areas: the parser (description capture), the flag parser (new flag), a new lister module (formatting), and `main.go` (wiring).
-
-#### 1. Parser — capture command descriptions (`internal/opsfile_parser.go`)
-
-- Add a `Description` field to `OpsCommand`:
-  ```go
-  type OpsCommand struct {
-      Name         string
-      Description  string                 // from # comment above declaration
-      Environments map[string][]string
-  }
-  ```
-- Add a `lastComment string` field to the `parser` struct. On each call to `processLine`:
-  - If the trimmed line starts with `#`, store the text (minus the `# ` prefix) in `lastComment`
-  - If the trimmed line is blank, clear `lastComment` (a blank line between comment and command breaks the association)
-  - When `startCommand()` is called, copy `lastComment` into the new command's `Description` and clear `lastComment`
-- This is the only parser change. Comments are currently discarded at line 89 of `processLine` — the `#`-prefix check needs to happen before the early return, capturing the text before discarding the line from command parsing
-
-#### 2. Flag parser — add `--list` / `-l` (`internal/flag_parser.go`)
-
-- Add `List bool` to `OpsFlags`
-- Register with pflag: `fs.BoolP("list", "l", false, "list available commands and environments")`
-- Wire `*list` into the returned `OpsFlags`
-- Update `fs.Usage` closure to include the new flag in the usage banner (pflag handles this automatically via `PrintDefaults`)
-
-#### 3. New lister module (`internal/lister.go`)
-
-Create a new file with a single public function:
-
-```go
-// FormatCommandList writes a human-readable summary of environments and
-// commands to w. Commands are printed in the order provided by cmds.
-func FormatCommandList(w io.Writer, cmds []OpsCommand)
+os.Args -> ParseOpsFlags() -> OpsFlags + positionals
+  |
+  ├─ ErrHelp? -> print usage + best-effort command listing -> exit 0
+  ├─ Version?  -> print version string -> exit 0
+  ├─ List?     -> ParseOpsFile -> FormatCommandList -> exit 0
+  └─ otherwise -> ParseOpsArgs -> Resolve -> DryRun check -> Execute
 ```
 
-- **Why a slice, not a map?** Maps don't preserve insertion order. The parser should return an ordered slice (or `main.go` can build one from the map using the order tracked during parsing — see note below).
-- **Environment collection:** iterate all commands, collect environment names into a `map[string]struct{}` set, sort the keys, and print them space-separated under an `Environments:` header
-- **Command table:** compute the max command-name length for column alignment, then print each command name left-padded with two spaces followed by the description (if any)
-- The function writes to an `io.Writer` so tests can capture output without touching stdout
+#### Sequence Diagram
+```
+User -> main.go: os.Args[1:]
+main.go -> flag_parser.go: ParseOpsFlags(args, nil)
+flag_parser.go -> pflag: fs.Parse(filtered)
+flag_parser.go --> main.go: OpsFlags, positionals, err
 
-**Parser ordering note:** the current parser returns `map[string]OpsCommand`. To preserve declaration order for the listing, add an `order []string` slice to the `parser` struct, appending each command name in `startCommand()`. Expose this as a second return value from `ParseOpsFile` or embed order in a wrapper type. The simplest approach: return an additional `[]string` (command names in order) from `ParseOpsFile`:
+alt ErrHelp
+  main.go -> flag_parser.go: (usage already printed by fs.Usage closure)
+  main.go -> opsfile_parser.go: ParseOpsFile (best-effort)
+  main.go -> lister.go: FormatCommandList (best-effort)
+  main.go -> os: Exit(0)
+end
 
-```go
-func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, []string, error)
+alt flags.Version
+  main.go -> os: Printf version, Exit(0)
+end
+
+alt flags.List
+  main.go -> opsfile_parser.go: ParseOpsFile
+  main.go -> lister.go: FormatCommandList(os.Stdout, ...)
+  main.go -> os: Exit(0)
+end
+
+main.go -> flag_parser.go: ParseOpsArgs(positionals)
+main.go -> command_resolver.go: Resolve(cmd, env, commands, vars)
+
+alt flags.DryRun
+  main.go -> os: Println each resolved line (unless Silent)
+else
+  main.go -> executor.go: Execute(lines, shell)
+end
 ```
 
-All existing callers pass `_` for the new return value, so this is backward-compatible at the call site.
+### Key Design Decisions
+- **pflag over stdlib `flag`:** pflag supports POSIX-style short flags (`-d`) and long flags (`--dry-run`) natively, which the standard `flag` package does not. This is the only external dependency in the project.
+- **Help token stripping:** Help flags are manually stripped before `fs.Parse()` so that flags appearing after `--help` (e.g. `--help -D /path`) are still parsed. This ensures the `--directory` flag is available when rendering the best-effort command listing in help output.
+- **`SetInterspersed(false)`:** Stops flag parsing at the first non-flag argument, matching stdlib `flag` behavior. This ensures positional arguments (env, command, command-args) are not misinterpreted as flags.
+- **Best-effort help listing:** The `--help` path attempts to find and parse the Opsfile for the command listing but silently ignores errors, so help always works even without an Opsfile.
 
-#### 4. Main wiring (`cmd/ops/main.go`)
+### Files to Create / Modify
 
-**`--list` path:**
+| File | Action | Description |
+|------|--------|-------------|
+| `internal/flag_parser.go` | Exists | Defines `OpsFlags`, `ErrHelp`, `ParseOpsFlags()`, `ParseOpsArgs()` |
+| `internal/version.go` | Exists | Declares `Version` and `Commit` build-time variables |
+| `internal/lister.go` | Exists | `FormatCommandList()` for `--list` and `--help` command listing |
+| `cmd/ops/main.go` | Exists | Wires flag checks into the execution pipeline |
+| `internal/flag_parser_test.go` | Exists | Tests for all flag parsing behavior |
+| `internal/lister_test.go` | Exists | Tests for list output formatting |
 
-```
-flags parsed → find Opsfile → ParseOpsFile → if flags.List → FormatCommandList(os.Stdout, ...) → os.Exit(0)
-```
+---
 
-Insert this check after `ParseOpsFile` succeeds and before `ParseOpsArgs`. This means `--list` does not require positional args.
+## 5. Alternatives Considered
 
-**`--help` path:**
+### Alternative A: Standard Library `flag` Package
 
-After the existing `errors.Is(err, internal.ErrHelp)` block (which currently calls `os.Exit(0)`), insert a best-effort listing:
+**Description:** Use Go's built-in `flag` package instead of `pflag`.
 
-```go
-if errors.Is(err, internal.ErrHelp) {
-    // Best-effort: try to show available commands
-    if dir, derr := resolveOpsfileDir(flags.Directory); derr == nil {
-        if _, cmds, order, perr := internal.ParseOpsFile(filepath.Join(dir, opsFileName)); perr == nil {
-            fmt.Fprintln(os.Stderr)
-            internal.FormatCommandList(os.Stderr, /* ordered cmds */)
-        }
-    }
-    os.Exit(0)
-}
-```
+**Pros:**
+- Zero external dependencies
+- Part of the standard library, always available
 
-Note: the help listing writes to stderr (matching the existing help output destination).
+**Cons:**
+- No POSIX short flag support (`-d` requires manual aliasing)
+- No built-in `-?` support (not a valid flag name)
+- More boilerplate for short/long flag pairs
 
-#### 5. Tests
+**Why not chosen:** pflag provides a significantly better user experience with POSIX-style short flags and cleaner help output with minimal dependency cost. It is widely used in the Go ecosystem (used by cobra, kubectl, etc.).
 
-| Test file | What it covers |
-|-----------|---------------|
-| `internal/opsfile_parser_test.go` | Description extraction: comment directly above command, blank line gap clears description, no comment yields empty string, multi-line comments only use last line |
-| `internal/lister_test.go` | `FormatCommandList` output format: column alignment, sorted environments, empty descriptions, single command, many commands |
-| `internal/flag_parser_test.go` | `--list` and `-l` parsed correctly into `OpsFlags.List` |
-| `cmd/ops/main_test.go` or integration test | End-to-end: `ops --list` against example Opsfile produces expected output; `ops --help` includes command listing; `ops --list prod tail-logs` does not execute |
+### Alternative B: Cobra Command Framework
 
-#### 6. Documentation updates
+**Description:** Use the Cobra framework for full CLI command/subcommand support.
 
-- `docs/feature-supported-flags.md` — this section (already done)
-- `README.md` — add `--list` to the flags table and add a usage example
-- Help/usage banner in `flag_parser.go` — pflag auto-includes registered flags in `PrintDefaults()`, so no manual text change needed beyond the registration
+**Pros:**
+- Rich subcommand support, auto-generated help, shell completion
+- Very popular in Go ecosystem
 
-### Files Changed (summary)
+**Cons:**
+- Heavyweight dependency for a single-command CLI
+- Adds complexity that `ops` doesn't need (no subcommands)
+- Would change the invocation syntax
 
-| File | Change |
-|------|--------|
-| `internal/opsfile_parser.go` | Add `Description` field to `OpsCommand`, capture `lastComment` in parser, return command order |
-| `internal/flag_parser.go` | Add `List` to `OpsFlags`, register `--list`/`-l` flag |
-| `internal/lister.go` | **New file** — `FormatCommandList()` |
-| `cmd/ops/main.go` | Wire `--list` exit path, add command listing to `--help` path |
-| `internal/opsfile_parser_test.go` | Tests for description capture and ordering |
-| `internal/lister_test.go` | **New file** — tests for output formatting |
-| `internal/flag_parser_test.go` | Tests for new flag |
-| `README.md` | Document `--list` flag |
-| `docs/feature-supported-flags.md` | This section |
+**Why not chosen:** `ops` is intentionally a flat CLI (`ops [flags] <env> <cmd>`) — Cobra's subcommand model doesn't fit. pflag (which Cobra uses internally) provides the needed flag features without the overhead.
+
+---
+
+## Open Questions
+- [x] All current open questions resolved — feature is fully implemented
+
+---
+
+## 6. Task Breakdown
+
+### Phase 1: Foundation (completed)
+- [x] Define `OpsFlags` struct with all flag fields
+- [x] Implement `ParseOpsFlags()` with pflag registration
+- [x] Implement `ParseOpsArgs()` for positional argument extraction
+- [x] Implement help token stripping for `-h`/`--help`/`-?`
+- [x] Write unit tests for flag parsing
+
+### Phase 2: Integration (completed)
+- [x] Wire flag checks into `main.go` execution pipeline
+- [x] Implement dry-run path in `main.go`
+- [x] Implement version reporting with build-time ldflags
+- [x] Implement `--list` flag with `FormatCommandList()`
+- [x] Implement best-effort command listing in `--help` output
+- [x] Write tests for lister formatting
+
+### Phase 3: Polish (completed)
+- [x] Ensure `--directory` interacts correctly with `--list` and `--help`
+- [x] Update help/usage banner text
+- [x] Update documentation
+
+---
