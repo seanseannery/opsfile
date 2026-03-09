@@ -520,7 +520,7 @@ func TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped(t *testing.T) {
 			"prod": {"echo $(VAR)"},
 		}},
 	}
-	vars := OpsVariables{"VAR": "opsfile-unscoped"} // P5
+	vars := OpsVariables{"VAR": "opsfile-unscoped"}           // P5
 	envFileVars := OpsVariables{"prod_VAR": "envfile-scoped"} // P3
 	got, err := Resolve("my-cmd", "prod", commands, vars, envFileVars)
 	require.NoError(t, err)
