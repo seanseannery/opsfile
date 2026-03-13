@@ -1,0 +1,26 @@
+{
+  "name": "ops",
+  "version": "1.0.0",
+  "description": "Claude skills for the ops CLI — run on-call. live-ops commands by name or natural language, and generate new Opsfiles",
+  "author": {
+    "name": "seanseannery",
+    "url": "https://github.com/seanseannery/opsfile"
+  },
+  "homepage": "https://github.com/seanseannery/opsfile",
+  "repository": "https://github.com/seanseannery/opsfile",
+  "license": "MIT",
+  "keywords": ["ops", "opsfile", "devops", "operations", "runbook", "cli"],
+  "skills": "./skills/",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v ops > /dev/null 2>&1 || echo 'opsfile plugin: ops CLI not found. Install it at https://github.com/seanseannery/opsfile'"
+          }
+        ]
+      }
+    ]
+  }
+}

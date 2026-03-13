@@ -31,6 +31,10 @@
     ├── .github/              Github Actions and PR/Issue templates
     ├────── workflows/        GitHub Actions workflows definitions (release, PR checks) and cliff.toml changelog config
     ├── .githooks/            Local git hooks: pre-push (lint+test), commit-msg (conventional commit format)
+    ├── .claude-plugin/       Claude Code plugin manifest (plugin.json)
+    ├── skills/               Claude Code plugin skills
+    ├────── run/              /ops:run skill — run ops commands (direct or natural language)
+    ├────── init-opsfile/     /ops:init-opsfile skill — scaffold a new Opsfile from repo analysis
     │
     ├── Formula/              Homebrew tap formula — auto-updated by release.yml on each release
     ├── go.mod                Module declaration (sean_seannery/opsfile, Go 1.25+, no external deps)
