@@ -161,6 +161,40 @@
   >$> claude 'analyze my projects Opsfile and add a table of commands and supported environments to CLAUDE.md for operational debugging'
   >```
 
+## Claude Code Plugin
+
+The `opsfile` plugin for [Claude Code](https://claude.ai/code) adds two skills so you can run ops commands and scaffold Opsfiles directly from your AI assistant.
+
+### Install
+
+```
+/plugin marketplace add seanseannery/opsfile
+/plugin install ops@opsfile
+```
+
+### Skills
+
+#### `/ops:run` — Run ops commands
+
+Accepts direct CLI arguments **or** natural language:
+
+```
+/ops:run prod tail-logs
+/ops:run --list
+/ops:run tail the production logs and grep for errors
+/ops:run how many instances are running in preprod?
+```
+
+When given natural language, the skill runs `ops --list` to discover available commands, resolves the best match, shows you the command it will run, then executes it.
+
+#### `/ops:init-opsfile` — Scaffold a new Opsfile
+
+Analyzes the current repo's tech stack (language, cloud platform, containerization) and generates a starter `Opsfile` using the platform-specific examples as templates. Asks for confirmation before writing.
+
+```
+/ops:init-opsfile
+```
+
 ## CONTRIBUTING
 
 For tips on how to set up dev environment, build, test, and how to follow PR and community best practices. Please read [CONTRIBUTING.md](CONTRIBUTING.md)

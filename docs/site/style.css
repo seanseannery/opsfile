@@ -18,6 +18,11 @@
   --green:    #859900;
 }
 
+/* ─── Section Headers ────────────────────────────────────────── */
+section h2 {
+  text-align: center;
+}
+
 /* ─── Global ─────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
@@ -109,6 +114,7 @@ a:hover {
   font-size: 1.4rem;
   color: var(--emphasis);
   margin-bottom: 8px;
+  font-family: monospace;
 }
 
 .tagline code {
@@ -206,7 +212,7 @@ a:hover {
 .terminal-dot:nth-child(3) { background: var(--green); }
 
 .terminal-body {
-  padding: 20px;
+  padding: 20px 20px 48px;
   font-family: monospace;
   font-size: 0.9rem;
   line-height: 1.8;
@@ -222,10 +228,15 @@ a:hover {
 .line:nth-child(2) { animation: appear-2 20s ease infinite; }
 .line:nth-child(3) { animation: appear-3 20s ease infinite; }
 .line:nth-child(4) { animation: appear-4 20s ease infinite; }
+.line:nth-child(5) { animation: appear-5 20s ease infinite; }
+.line:nth-child(6) { animation: appear-6 20s ease infinite; }
 
 .prompt { color: var(--green); }
 .cmd    { color: var(--bright); }
 .out    { color: var(--muted); }
+.skill  { color: var(--orange); }
+
+.line:has(.prompt) { margin-top: 10px; }
 
 .cursor {
   display: inline-block;
@@ -257,6 +268,18 @@ a:hover {
 @keyframes appear-4 {
   0%,  17%  { opacity: 0; transform: translateY(4px); }
   19%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-5 {
+  0%,  22%  { opacity: 0; transform: translateY(4px); }
+  24%, 88%  { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; transform: none; }
+}
+
+@keyframes appear-6 {
+  0%,  27%  { opacity: 0; transform: translateY(4px); }
+  29%, 88%  { opacity: 1; transform: none; }
   96%, 100% { opacity: 0; transform: none; }
 }
 
@@ -421,6 +444,50 @@ pre > code {
   font-family: monospace;
 }
 
+/* ─── Prereq Note ────────────────────────────────────────────── */
+.prereq-note {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-left: 3px solid var(--yellow);
+  padding-left: 10px;
+  margin: 12px 0;
+}
+
+.prereq-note code {
+  color: var(--emphasis);
+  font-family: monospace;
+}
+
+/* ─── OR Divider ─────────────────────────────────────────────── */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 32px 0 20px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--subtle);
+}
+
+.skill-inline {
+  color: var(--orange);
+  font-family: monospace;
+}
+
+/* ─── Claude Plugin Section ──────────────────────────────────── */
+#claude-plugin h4 code {
+  color: var(--orange);
+  font-family: monospace;
+}
+
 /* ─── Usage Section ──────────────────────────────────────────── */
 #usage,
 .usage-section {
@@ -429,11 +496,18 @@ pre > code {
 }
 
 .usage-section h2,
-.usage-section h3,
-#usage h2,
-#usage h3 {
+#usage h2 {
   color: var(--emphasis);
   font-family: monospace;
+}
+
+.usage-section h3,
+#usage h3 {
+  color: var(--bright);
+  font-family: monospace;
+  font-size: 1.3rem;
+  margin-top: 40px;
+  margin-bottom: 12px;
 }
 
 .opsfile-example {

@@ -16,6 +16,7 @@
       <nav class="site-nav">
         <a href="#install">Install</a>
         <a href="#usage">Usage</a>
+        <a href="#claude-plugin">Claude Plugin</a>
         <a href="https://github.com/seanseannery/opsfile">GitHub</a>
       </nav>
     </div>
@@ -25,10 +26,11 @@
   <section class="hero">
     <div class="container">
       <h1>Opsfile</h1>
-      <p class="tagline">Like <code>make</code>, but for common live ops commands</p>
-      <p class="subtitle">Create an Opsfile. Run <code>ops prod rollback-cluster</code>. Go back to sleep.</p>
+      <p class="tagline">Like <code>make</code>, but for common live-ops commands</p>
+      <p class="subtitle">Create an Opsfile. Run <code>ops prod rollback-cluster</code>. Go back to sleep. (or just have claude do it)</p>
       <div class="cta-buttons">
         <a href="#install" class="btn-primary">Install</a>
+        <a href="#features" class="btn-secondary">Features?</a>
         <a href="https://github.com/seanseannery/opsfile" class="btn-secondary">View on GitHub</a>
       </div>
 
@@ -52,6 +54,12 @@
           <div class="line">
             <span class="out">No alarms in ALARM state. All clear.</span>
           </div>
+          <div class="line">
+            <span class="prompt">$</span><span class="cmd"> claude "<span class="skill">/ops:run</span> are there any errors in staging?"</span>
+          </div>
+          <div class="line">
+            <span class="out">Running: ops staging error-rate → 0.04% (9 errors / 30 min)</span>
+          </div>
           <span class="cursor"></span>
         </div>
       </div>
@@ -66,19 +74,26 @@
         <button class="tab-btn" data-tab="tab-curl">curl</button>
         <button class="tab-btn" data-tab="tab-brew">Homebrew</button>
         <button class="tab-btn" data-tab="tab-npm">npm</button>
+        <button class="tab-btn" data-tab="tab-claude">Claude Plugin</button>
       </div>
 
       <div id="tab-curl" class="tab-content code-block">
-        <pre><code>curl -fsSL https://seanseannery.github.io/opsfile/install.sh | bash</code></pre>
+        <pre><code><span class="sh-cmd">curl</span> <span class="sh-varname">-fsSL</span> <span class="sh-val">https://seanseannery.github.io/opsfile/install.sh</span> <span class="sh-comment">|</span> <span class="sh-cmd">bash</span></code></pre>
       </div>
 
       <div id="tab-brew" class="tab-content code-block">
-        <pre><code>brew tap seanseannery/opsfile https://github.com/seanseannery/opsfile
-brew install seanseannery/opsfile/opsfile</code></pre>
+        <pre><code><span class="sh-cmd">brew</span> <span class="sh-env">tap</span> <span class="sh-val">seanseannery/opsfile</span> <span class="sh-val">https://github.com/seanseannery/opsfile</span>
+<span class="sh-cmd">brew</span> <span class="sh-env">install</span> <span class="sh-val">seanseannery/opsfile/opsfile</span></code></pre>
       </div>
 
       <div id="tab-npm" class="tab-content code-block">
-        <pre><code>npm install -g github:seanseannery/opsfile</code></pre>
+        <pre><code><span class="sh-cmd">npm</span> <span class="sh-env">install</span> <span class="sh-varname">-g</span> <span class="sh-val">github:seanseannery/opsfile</span></code></pre>
+      </div>
+
+      <div id="tab-claude" class="tab-content code-block">
+        <p class="prereq-note">Requires the <code>ops</code> CLI to be installed first — use curl, Homebrew, or npm above.</p>
+        <pre><code><span class="sh-cmd">/plugin</span> <span class="sh-env">marketplace add</span> <span class="sh-val">seanseannery/opsfile</span>
+<span class="sh-cmd">/plugin</span> <span class="sh-env">install</span> <span class="sh-val">ops@opsfile</span></code></pre>
       </div>
     </div>
   </section>
@@ -115,6 +130,13 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         echo "Using AWS profile: <span class="sh-subst">$(AWS_PROFILE)</span>"</code></pre>
       </div>
 
+      <div class="or-divider"><span>or use the Claude plugin</span></div>
+
+      <p>Run <code class="skill-inline">/ops:init-opsfile</code> to have Claude analyze your repo's tech stack and generate a tailored Opsfile automatically.</p>
+      <div class="bash-example">
+        <span class="prompt">$</span> claude "<span class="skill">/ops:init-opsfile</span>"
+      </div>
+
       <h3>Step 2: Run ops commands</h3>
       <p>Run commands with the following syntax:</p>
       <div class="bash-example">
@@ -147,13 +169,35 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         <div><span class="prompt">$</span> ops local logs</div>
         <div><span class="prompt">$</span> ops prod k8s -namespace myspace</div>
       </div>
+
+      <div class="or-divider"><span>or use the Claude plugin</span></div>
+
+      <p>Pass a command directly or describe what you need in plain English — <code class="skill-inline">/ops:run</code> discovers your available commands and resolves the best match.</p>
+      <div class="bash-example">
+        <div><span class="prompt">$</span> claude "<span class="skill">/ops:run</span> prod tail-logs"</div>
+        <div><span class="prompt">$</span> claude "<span class="skill">/ops:run</span> --list"</div>
+        <div><span class="prompt">$</span> claude "<span class="skill">/ops:run</span> are there any errors in staging?"</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLAUDE PLUGIN -->
+  <section id="claude-plugin" class="install-section">
+    <div class="container">
+      <h2>Claude Code Plugin</h2>
+      <p>Install the <strong>ops</strong> plugin once to unlock the Claude skill alternatives shown above.</p>
+      <p class="prereq-note">Requires the <code>ops</code> CLI to be installed first — <a href="#install">install it above</a>.</p>
+      <div class="code-block">
+        <pre><code><span class="sh-cmd">/plugin</span> <span class="sh-env">marketplace add</span> <span class="sh-val">seanseannery/opsfile</span>
+<span class="sh-cmd">/plugin</span> <span class="sh-env">install</span> <span class="sh-val">ops@opsfile</span></code></pre>
+      </div>
     </div>
   </section>
 
   <!-- FEATURES -->
-  <section class="features-section">
+  <section class="features-section" id="features">
     <div class="container">
-      <h2>Why use it?</h2>
+      <h2 >Why use it?</h2>
       <div class="feature-grid">
         <div class="feature-card">
           <div class="feature-icon">⚡</div>
@@ -163,7 +207,7 @@ brew install seanseannery/opsfile/opsfile</code></pre>
         <div class="feature-card">
           <div class="feature-icon">🤖</div>
           <div class="feature-title">Less AI tokens</div>
-          <p>Let agents run ops scripts instead of googling commands</p>
+          <p>CLI > MCP. Agents run ops scripts instead of googling commands or loading large MCP context</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">📖</div>
@@ -243,7 +287,7 @@ brew install seanseannery/opsfile/opsfile</code></pre>
       btn.title = 'Copy';
       btn.setAttribute('aria-label', 'Copy');
       btn.addEventListener('click', () => {
-        const code = block.querySelector('code');
+        const code = block.querySelector('pre > code');
         navigator.clipboard.writeText(code.textContent.trim()).then(() => {
           btn.innerHTML = checkIcon;
           setTimeout(() => { btn.innerHTML = copyIcon; }, 2000);
