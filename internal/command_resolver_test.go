@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,9 +12,9 @@ import (
 // returns the variables and commands maps. Fails the test on parse error.
 func parseFixture(t *testing.T, content string) (OpsVariables, map[string]OpsCommand) {
 	t.Helper()
-	vars, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	parsed, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err, "ParseOpsFile")
-	return vars, commands
+	return parsed.Variables, parsed.Commands
 }
 
 // lineTexts extracts the Text field from each ResolvedLine for easy comparison.
@@ -34,7 +35,7 @@ list-instance-ips:
     preprod:
         aws ecs --list-instances
 `)
-	got, err := Resolve("list-instance-ips", "prod", commands, vars, nil)
+	got, err := Resolve("list-instance-ips", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	want := []string{`aws ec2 --list-instances`, `echo "done"`}
 	assert.Equal(t, want, lineTexts(got))
@@ -43,19 +44,33 @@ list-instance-ips:
 func TestResolve_EmptyCommandsMap(t *testing.T) {
 	commands := map[string]OpsCommand{}
 	vars := OpsVariables{}
-	_, err := Resolve("anything", "prod", commands, vars, nil)
+	_, err := Resolve("anything", "prod", commands, vars, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not found")
 }
 
 func TestResolve_CommandWithEmptyShellLines(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"empty": {Name: "empty", Environments: map[string][]string{"prod": {}}},
+		"empty": {Name: "empty", Environments: map[string][]ShellLine{"prod": {}}},
 	}
 	vars := OpsVariables{}
-	got, err := Resolve("empty", "prod", commands, vars, nil)
+	got, err := Resolve("empty", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Empty(t, got.Lines)
+}
+
+func TestResolve_NilEnvFileVarsIsSafe(t *testing.T) {
+	// nil envFileVars (no --env-file supplied) must not panic — nil map reads
+	// return the zero value in Go, so this is safe by language spec, but we
+	// test it explicitly to document and guard the assumption.
+	vars, commands := parseFixture(t, `
+deploy:
+    default:
+        echo hello
+`)
+	got, err := Resolve("deploy", "default", commands, vars, nil, os.LookupEnv)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"echo hello"}, lineTexts(got))
 }
 
 func TestResolve_MultipleVariablesInOneLine(t *testing.T) {
@@ -67,7 +82,7 @@ my-cmd:
     default:
         echo $(A) $(B)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo hello world", got.Lines[0].Text)
 }
@@ -80,19 +95,19 @@ my-cmd:
     default:
         echo $(A) and $(A)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo val and val", got.Lines[0].Text)
 }
 
 func TestResolve_UnclosedDollarParen(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(incomplete"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(incomplete"}},
 		}},
 	}
 	vars := OpsVariables{}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo $(incomplete", got.Lines[0].Text)
 }
@@ -105,7 +120,7 @@ my-cmd:
     default:
         $(VAR) $(shell cmd)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "hello $(shell cmd)", got.Lines[0].Text)
 }
@@ -119,7 +134,7 @@ my-cmd:
     default:
         echo $(ACCOUNT)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo prod-acct", got.Lines[0].Text)
 }
@@ -132,72 +147,72 @@ my-cmd:
     default:
         $(VAR) $(VAR)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "x x", got.Lines[0].Text)
 }
 
 func TestResolve_UnclosedDollarParenAtEnd(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $("},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $("}},
 		}},
 	}
 	vars := OpsVariables{}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo $(", got.Lines[0].Text)
 }
 
 func TestResolve_EmptyToken(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $()"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $()"}},
 		}},
 	}
 	vars := OpsVariables{}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo $()", got.Lines[0].Text)
 }
 
 func TestResolve_ScopedLookupPriority(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(HOST)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(HOST)"}},
 		}},
 	}
 	vars := OpsVariables{
 		"prod_HOST": "prod.example.com",
 		"HOST":      "default.example.com",
 	}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo prod.example.com", got.Lines[0].Text)
 }
 
 func TestResolve_UnscopedFallbackDirect(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(HOST)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(HOST)"}},
 		}},
 	}
 	vars := OpsVariables{
 		"HOST": "default.example.com",
 	}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo default.example.com", got.Lines[0].Text)
 }
 
 func TestResolve_MissingVariableReturnsError(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(NOPE)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(NOPE)"}},
 		}},
 	}
 	vars := OpsVariables{}
-	_, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	_, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
@@ -210,7 +225,7 @@ tail-logs:
     default:
         aws cloudwatch logs --tail $(AWS_ACCOUNT)
 `)
-	got, err := Resolve("tail-logs", "prod", commands, vars, nil)
+	got, err := Resolve("tail-logs", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws cloudwatch logs --tail 1234567", got.Lines[0].Text)
@@ -224,7 +239,7 @@ tail-logs:
     local:
         docker logs myapp --follow
 `)
-	got, err := Resolve("tail-logs", "local", commands, vars, nil)
+	got, err := Resolve("tail-logs", "local", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "docker logs myapp --follow", got.Lines[0].Text)
@@ -239,7 +254,7 @@ tail-logs:
     default:
         echo $(AWS_ACCOUNT)
 `)
-	got, err := Resolve("tail-logs", "prod", commands, vars, nil)
+	got, err := Resolve("tail-logs", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo scoped", got.Lines[0].Text)
 }
@@ -252,7 +267,7 @@ tail-logs:
     default:
         echo $(AWS_ACCOUNT)
 `)
-	got, err := Resolve("tail-logs", "prod", commands, vars, nil)
+	got, err := Resolve("tail-logs", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo unscoped", got.Lines[0].Text)
 }
@@ -263,7 +278,7 @@ my-cmd:
     prod:
         echo hello
 `)
-	_, err := Resolve("nonexistent", "prod", commands, vars, nil)
+	_, err := Resolve("nonexistent", "prod", commands, vars, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not found")
 }
@@ -274,7 +289,7 @@ my-cmd:
     prod:
         echo hello
 `)
-	_, err := Resolve("my-cmd", "staging", commands, vars, nil)
+	_, err := Resolve("my-cmd", "staging", commands, vars, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "no default")
 }
@@ -285,7 +300,7 @@ my-cmd:
     prod:
         echo $(MISSING_VAR)
 `)
-	_, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	_, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
@@ -296,7 +311,7 @@ my-cmd:
     prod:
         echo $(aws ec2 describe-instances)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0].Text)
 }
@@ -311,7 +326,7 @@ deploy:
         aws ecs describe-clusters --cluster $(CLUSTER) --region $(REGION)
         echo "done in $(REGION)"
 `)
-	got, err := Resolve("deploy", "prod", commands, vars, nil)
+	got, err := Resolve("deploy", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	want := []string{
 		"aws ecs describe-clusters --cluster my-cluster --region us-east-1",
@@ -325,11 +340,11 @@ deploy:
 func TestResolveVar_UnscopedShellEnvFallback(t *testing.T) {
 	t.Setenv("VAR", "from-shell")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo from-shell", got.Lines[0].Text)
 }
@@ -337,11 +352,11 @@ func TestResolveVar_UnscopedShellEnvFallback(t *testing.T) {
 func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
 	t.Setenv("prod_VAR", "shell-scoped")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo shell-scoped", got.Lines[0].Text)
 }
@@ -349,12 +364,12 @@ func TestResolveVar_EnvScopedShellEnv(t *testing.T) {
 func TestResolveVar_ShellEnvScopedBeatsOpsfileEnvScoped(t *testing.T) {
 	t.Setenv("prod_VAR", "shell-scoped")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
 	vars := OpsVariables{"prod_VAR": "opsfile-scoped"}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo shell-scoped", got.Lines[0].Text)
 }
@@ -362,12 +377,12 @@ func TestResolveVar_ShellEnvScopedBeatsOpsfileEnvScoped(t *testing.T) {
 func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
 	t.Setenv("prod_VAR", "shell-scoped")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo shell-scoped", got.Lines[0].Text)
 }
@@ -375,12 +390,12 @@ func TestResolveVar_ShellEnvScopedBeatsOpsfileUnscoped(t *testing.T) {
 func TestResolveVar_ShellUnscopedBeatsOpsfileUnscoped(t *testing.T) {
 	t.Setenv("VAR", "shell-unscoped")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo shell-unscoped", got.Lines[0].Text)
 }
@@ -388,11 +403,11 @@ func TestResolveVar_ShellUnscopedBeatsOpsfileUnscoped(t *testing.T) {
 func TestResolveVar_ShellUnscopedIsPriority4(t *testing.T) {
 	t.Setenv("VAR", "shell-unscoped")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo shell-unscoped", got.Lines[0].Text)
 }
@@ -454,11 +469,11 @@ func TestResolveVar_PriorityChain(t *testing.T) {
 				t.Setenv(k, v)
 			}
 			commands := map[string]OpsCommand{
-				"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-					"prod": {"echo $(VAR)"},
+				"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+					"prod": {{Text: "echo $(VAR)"}},
 				}},
 			}
-			got, err := Resolve("my-cmd", "prod", commands, tc.opsfileVars, tc.envFileVars)
+			got, err := Resolve("my-cmd", "prod", commands, tc.opsfileVars, tc.envFileVars, os.LookupEnv)
 			require.NoError(t, err)
 			assert.Equal(t, "echo "+tc.want, got.Lines[0].Text)
 		})
@@ -469,11 +484,11 @@ func TestResolveVar_MixedSources(t *testing.T) {
 	t.Setenv("B", "from-shell")
 	vars := OpsVariables{"A": "from-opsfile"}
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(A) $(B)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(A) $(B)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo from-opsfile from-shell", got.Lines[0].Text)
 }
@@ -481,11 +496,11 @@ func TestResolveVar_MixedSources(t *testing.T) {
 func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
 	t.Setenv("VAR", "")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo ", got.Lines[0].Text)
 }
@@ -493,22 +508,22 @@ func TestResolveVar_EmptyShellEnvValue(t *testing.T) {
 func TestResolveVar_NonIdentifierUnaffectedByShellEnv(t *testing.T) {
 	t.Setenv("aws", "should-not-matter")
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(aws ec2 describe-instances)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(aws ec2 describe-instances)"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo $(aws ec2 describe-instances)", got.Lines[0].Text)
 }
 
 func TestResolveVar_AbsentFromAllSources(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(DEFINITELY_NOT_SET_XYZ123)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(DEFINITELY_NOT_SET_XYZ123)"}},
 		}},
 	}
-	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
@@ -516,13 +531,13 @@ func TestResolveVar_AbsentFromAllSources(t *testing.T) {
 func TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped(t *testing.T) {
 	// P3 (env-file env-scoped) must beat P5 (Opsfile unscoped).
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
 	vars := OpsVariables{"VAR": "opsfile-unscoped"}           // P5
 	envFileVars := OpsVariables{"prod_VAR": "envfile-scoped"} // P3
-	got, err := Resolve("my-cmd", "prod", commands, vars, envFileVars)
+	got, err := Resolve("my-cmd", "prod", commands, vars, envFileVars, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo envfile-scoped", got.Lines[0].Text)
 }
@@ -530,51 +545,56 @@ func TestResolveVar_EnvFileScopedBeatsOpsfileUnscoped(t *testing.T) {
 func TestResolveVar_EnvFileScopedKeyWrongEnv(t *testing.T) {
 	// An env-file key scoped to a different env must not resolve for the current env.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo $(VAR)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(VAR)"}},
 		}},
 	}
 	envFileVars := OpsVariables{"staging_VAR": "wrong-env-value"}
-	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, envFileVars)
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, envFileVars, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
 
-// --- @ prefix tests ---
+// --- @ (silent) prefix flag propagation tests ---
 
-func TestResolve_AtPrefixStripped(t *testing.T) {
+func TestResolve_SilentFlagPropagated(t *testing.T) {
+	// Verify resolver passes through Silent=true from ShellLine to ResolvedLine.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo hello", Silent: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
 	assert.True(t, got.Lines[0].Silent)
 }
 
-func TestResolve_NoAtPrefix(t *testing.T) {
+func TestResolve_NoSilentFlag(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo hello"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
 	assert.False(t, got.Lines[0].Silent)
 }
 
-func TestResolve_MixedAtAndNonAt(t *testing.T) {
+func TestResolve_MixedSilentAndNonSilent(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@echo setup", "aws deploy", "@echo cleanup"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {
+				{Text: "echo setup", Silent: true},
+				{Text: "aws deploy"},
+				{Text: "echo cleanup", Silent: true},
+			},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 3)
 	assert.Equal(t, "echo setup", got.Lines[0].Text)
@@ -593,7 +613,7 @@ my-cmd:
     default:
         @echo $(VAR)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
@@ -608,7 +628,7 @@ my-cmd:
     default:
         @echo $(ACCT)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo 123", got.Lines[0].Text)
@@ -622,7 +642,7 @@ my-cmd:
         @aws logs \
             --follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
@@ -636,7 +656,7 @@ my-cmd:
         @aws logs
             --follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
@@ -644,12 +664,13 @@ my-cmd:
 }
 
 func TestResolve_DoubleAtPrefix(t *testing.T) {
+	// @@echo hello: parser strips first @, leaves @echo hello as text.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@@echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "@echo hello", Silent: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "@echo hello", got.Lines[0].Text)
@@ -657,12 +678,13 @@ func TestResolve_DoubleAtPrefix(t *testing.T) {
 }
 
 func TestResolve_AtPrefixOnly(t *testing.T) {
+	// @ alone: silent flag, empty text.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "", Silent: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "", got.Lines[0].Text)
@@ -671,11 +693,11 @@ func TestResolve_AtPrefixOnly(t *testing.T) {
 
 func TestResolve_AtInMiddleOfLine(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo user@host.com"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo user@host.com"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo user@host.com", got.Lines[0].Text)
@@ -690,7 +712,7 @@ my-cmd:
     default:
         echo $(VAR)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo user@host", got.Lines[0].Text)
 	assert.False(t, got.Lines[0].Silent)
@@ -698,11 +720,11 @@ my-cmd:
 
 func TestResolve_AtPrefixNonIdentifierPassthrough(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@$(shell cmd)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "$(shell cmd)", Silent: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "$(shell cmd)", got.Lines[0].Text)
@@ -711,11 +733,11 @@ func TestResolve_AtPrefixNonIdentifierPassthrough(t *testing.T) {
 
 func TestResolve_AtPrefixMissingVariable(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@echo $(MISSING)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(MISSING)", Silent: true}},
 		}},
 	}
-	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
@@ -728,7 +750,7 @@ my-cmd:
         echo deploy
         @echo cleanup
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 3)
 
@@ -745,9 +767,9 @@ func TestResolve_AtPrefixBackslashTrailingEOF(t *testing.T) {
 my-cmd:
     prod:
         @aws logs \`
-	_, commands, _, _, err := ParseOpsFile(writeTempOpsfile(t, content))
+	parsed, err := ParseOpsFile(writeTempOpsfile(t, content))
 	require.NoError(t, err)
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", parsed.Commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs ", got.Lines[0].Text)
@@ -763,7 +785,7 @@ my-cmd:
         aws logs \
             @--follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs @--follow", got.Lines[0].Text)
@@ -771,13 +793,13 @@ my-cmd:
 }
 
 func TestResolve_AtPrefixWhitespaceOnlyAfter(t *testing.T) {
-	// @ followed by only whitespace — silent flag set, text is the whitespace.
+	// Silent flag set, text is the whitespace.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@   "},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "   ", Silent: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "   ", got.Lines[0].Text)
@@ -794,22 +816,22 @@ deploy:
         aws ecs update --region $(REGION)
         echo done
 `)
-	got, err := Resolve("deploy", "prod", commands, vars, nil)
+	got, err := Resolve("deploy", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	for i, line := range got.Lines {
 		assert.False(t, line.Silent, "line %d should not be silent", i)
 	}
 }
 
-// --- - (dash) prefix tests ---
+// --- - (dash / ignore-error) prefix flag propagation tests ---
 
-func TestResolve_DashPrefixStripped(t *testing.T) {
+func TestResolve_IgnoreErrorFlagPropagated(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo hello", IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
@@ -817,13 +839,13 @@ func TestResolve_DashPrefixStripped(t *testing.T) {
 	assert.False(t, got.Lines[0].Silent)
 }
 
-func TestResolve_NoDashPrefix(t *testing.T) {
+func TestResolve_NoIgnoreErrorFlag(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo hello"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
@@ -831,27 +853,13 @@ func TestResolve_NoDashPrefix(t *testing.T) {
 	assert.False(t, got.Lines[0].Silent)
 }
 
-func TestResolve_DashAtPrefix(t *testing.T) {
+func TestResolve_BothFlagsPropagated(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-@echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo hello", Silent: true, IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
-	require.NoError(t, err)
-	require.Len(t, got.Lines, 1)
-	assert.Equal(t, "echo hello", got.Lines[0].Text)
-	assert.True(t, got.Lines[0].IgnoreError)
-	assert.True(t, got.Lines[0].Silent)
-}
-
-func TestResolve_AtDashPrefix(t *testing.T) {
-	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@-echo hello"},
-		}},
-	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
@@ -867,7 +875,7 @@ my-cmd:
     default:
         -echo $(VAR)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo hello", got.Lines[0].Text)
@@ -882,7 +890,7 @@ my-cmd:
     default:
         -echo $(ACCT)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "echo 123", got.Lines[0].Text)
@@ -896,7 +904,7 @@ my-cmd:
         -aws logs \
             --follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
@@ -910,20 +918,23 @@ my-cmd:
         -aws logs
             --follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs --follow", got.Lines[0].Text)
 	assert.True(t, got.Lines[0].IgnoreError)
 }
 
-func TestResolve_MixedDashAndNonDash(t *testing.T) {
+func TestResolve_MixedIgnoreErrorAndNormal(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-docker stop app", "docker run app"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {
+				{Text: "docker stop app", IgnoreError: true},
+				{Text: "docker run app"},
+			},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 2)
 	assert.Equal(t, "docker stop app", got.Lines[0].Text)
@@ -940,7 +951,7 @@ my-cmd:
         echo deploy
         -echo cleanup
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 3)
 
@@ -955,12 +966,13 @@ my-cmd:
 }
 
 func TestResolve_DoubleDashPrefix(t *testing.T) {
+	// --echo hello: parser strips first -, leaves -echo hello as text.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"--echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "-echo hello", IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "-echo hello", got.Lines[0].Text)
@@ -968,12 +980,13 @@ func TestResolve_DoubleDashPrefix(t *testing.T) {
 }
 
 func TestResolve_DashPrefixOnly(t *testing.T) {
+	// - alone: ignoreError flag, empty text.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "", IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "", got.Lines[0].Text)
@@ -982,12 +995,13 @@ func TestResolve_DashPrefixOnly(t *testing.T) {
 }
 
 func TestResolve_DashAtPrefixOnly(t *testing.T) {
+	// -@ alone: both flags, empty text.
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-@"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "", Silent: true, IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "", got.Lines[0].Text)
@@ -997,11 +1011,11 @@ func TestResolve_DashAtPrefixOnly(t *testing.T) {
 
 func TestResolve_DashInMiddleOfLine(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"kubectl delete --force"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "kubectl delete --force"}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "kubectl delete --force", got.Lines[0].Text)
@@ -1016,7 +1030,7 @@ my-cmd:
     default:
         echo $(VAR)
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	assert.Equal(t, "echo hello-world", got.Lines[0].Text)
 	assert.False(t, got.Lines[0].IgnoreError)
@@ -1029,7 +1043,7 @@ my-cmd:
         aws logs \
             -follow
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws logs -follow", got.Lines[0].Text)
@@ -1038,22 +1052,22 @@ my-cmd:
 
 func TestResolve_DashPrefixMissingVariable(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-echo $(MISSING)"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "echo $(MISSING)", IgnoreError: true}},
 		}},
 	}
-	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	_, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "not defined")
 }
 
 func TestResolve_DashPrefixWhitespaceAfter(t *testing.T) {
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-   "},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "   ", IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "   ", got.Lines[0].Text)
@@ -1067,7 +1081,7 @@ my-cmd:
         -@aws stop \
             --force
 `)
-	got, err := Resolve("my-cmd", "prod", commands, vars, nil)
+	got, err := Resolve("my-cmd", "prod", commands, vars, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "aws stop --force", got.Lines[0].Text)
@@ -1078,11 +1092,11 @@ my-cmd:
 func TestResolve_DashAtDashPrefix(t *testing.T) {
 	// -@- should strip one - and one @, leaving - as shell text
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"-@-echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "-echo hello", Silent: true, IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "-echo hello", got.Lines[0].Text)
@@ -1093,11 +1107,11 @@ func TestResolve_DashAtDashPrefix(t *testing.T) {
 func TestResolve_AtDashAtPrefix(t *testing.T) {
 	// @-@ should strip one @ and one -, leaving @ as shell text
 	commands := map[string]OpsCommand{
-		"my-cmd": {Name: "my-cmd", Environments: map[string][]string{
-			"prod": {"@-@echo hello"},
+		"my-cmd": {Name: "my-cmd", Environments: map[string][]ShellLine{
+			"prod": {{Text: "@echo hello", Silent: true, IgnoreError: true}},
 		}},
 	}
-	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil)
+	got, err := Resolve("my-cmd", "prod", commands, OpsVariables{}, nil, os.LookupEnv)
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 1)
 	assert.Equal(t, "@echo hello", got.Lines[0].Text)

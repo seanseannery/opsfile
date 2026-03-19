@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -34,16 +33,19 @@ type ResolvedCommand struct {
 // Variable substitution: $(VAR_NAME) tokens whose content is a bare identifier
 // are resolved against vars and envFileVars using a six-level priority chain
 // (shell wins — matches Docker Compose / Terraform convention):
-//  1. Shell env-scoped:    os.LookupEnv("env_VAR")
+//  1. Shell env-scoped:    envLookup("env_VAR")
 //  2. Opsfile env-scoped:  vars["env_VAR"]
 //  3. Env-file env-scoped: envFileVars["env_VAR"]
-//  4. Shell unscoped:      os.LookupEnv("VAR")
+//  4. Shell unscoped:      envLookup("VAR")
 //  5. Opsfile unscoped:    vars["VAR"]
 //  6. Env-file unscoped:   envFileVars["VAR"]
 //
 // $(…) tokens containing spaces or other non-identifier characters are passed
 // through unchanged, preserving shell subcommand syntax.
-func Resolve(commandName, env string, commands map[string]OpsCommand, vars, envFileVars OpsVariables) (ResolvedCommand, error) {
+//
+// envLookup is called to resolve shell environment variables. Pass os.LookupEnv
+// for production use, or a custom function for testing.
+func Resolve(commandName, env string, commands map[string]OpsCommand, vars, envFileVars OpsVariables, envLookup func(string) (string, bool)) (ResolvedCommand, error) {
 	cmd, ok := commands[commandName]
 	if !ok {
 		return ResolvedCommand{}, fmt.Errorf("command %q not found", commandName)
@@ -55,37 +57,18 @@ func Resolve(commandName, env string, commands map[string]OpsCommand, vars, envF
 	}
 
 	lines := make([]ResolvedLine, 0, len(raw))
-	for _, line := range raw {
-		silent := false
-		ignoreError := false
-		for len(line) > 0 {
-			switch line[0] {
-			case '@':
-				if !silent {
-					silent = true
-					line = line[1:]
-					continue
-				}
-			case '-':
-				if !ignoreError {
-					ignoreError = true
-					line = line[1:]
-					continue
-				}
-			}
-			break
-		}
-		substituted, err := substituteVars(line, env, vars, envFileVars)
+	for _, sl := range raw {
+		substituted, err := substituteVars(sl.Text, env, vars, envFileVars, envLookup)
 		if err != nil {
 			return ResolvedCommand{}, err
 		}
-		lines = append(lines, ResolvedLine{Text: substituted, Silent: silent, IgnoreError: ignoreError})
+		lines = append(lines, ResolvedLine{Text: substituted, Silent: sl.Silent, IgnoreError: sl.IgnoreError})
 	}
 	return ResolvedCommand{Lines: lines}, nil
 }
 
 // selectLines returns the shell lines for env, falling back to "default".
-func selectLines(cmd OpsCommand, env string) ([]string, error) {
+func selectLines(cmd OpsCommand, env string) ([]ShellLine, error) {
 	if lines, ok := cmd.Environments[env]; ok {
 		return lines, nil
 	}
@@ -98,7 +81,7 @@ func selectLines(cmd OpsCommand, env string) ([]string, error) {
 // substituteVars replaces $(VAR_NAME) references in a single shell line.
 // Only tokens whose content passes isIdentifier are treated as Opsfile
 // variable references; all others are left unchanged.
-func substituteVars(line, env string, vars, envFileVars OpsVariables) (string, error) {
+func substituteVars(line, env string, vars, envFileVars OpsVariables, envLookup func(string) (string, bool)) (string, error) {
 	var b strings.Builder
 	remaining := line
 	for {
@@ -120,7 +103,7 @@ func substituteVars(line, env string, vars, envFileVars OpsVariables) (string, e
 		remaining = remaining[end+1:]
 
 		if isIdentifier(token) {
-			val, err := resolveVar(token, env, vars, envFileVars)
+			val, err := resolveVar(token, env, vars, envFileVars, envLookup)
 			if err != nil {
 				return "", err
 			}
@@ -136,17 +119,17 @@ func substituteVars(line, env string, vars, envFileVars OpsVariables) (string, e
 }
 
 // resolveVar looks up varName using a six-level priority chain (shell wins):
-//  1. Shell env-scoped    (os.LookupEnv("env_VAR"))
+//  1. Shell env-scoped    (envLookup("env_VAR"))
 //  2. Opsfile env-scoped  (vars["env_VAR"])
 //  3. Env-file env-scoped (envFileVars["env_VAR"])
-//  4. Shell unscoped      (os.LookupEnv("VAR"))
+//  4. Shell unscoped      (envLookup("VAR"))
 //  5. Opsfile unscoped    (vars["VAR"])
 //  6. Env-file unscoped   (envFileVars["VAR"])
-func resolveVar(varName, env string, vars, envFileVars OpsVariables) (string, error) {
+func resolveVar(varName, env string, vars, envFileVars OpsVariables, envLookup func(string) (string, bool)) (string, error) {
 	scopedName := env + "_" + varName
 
 	// Priority 1: shell env-scoped
-	if val, ok := os.LookupEnv(scopedName); ok {
+	if val, ok := envLookup(scopedName); ok {
 		return val, nil
 	}
 	// Priority 2: Opsfile env-scoped
@@ -158,7 +141,7 @@ func resolveVar(varName, env string, vars, envFileVars OpsVariables) (string, er
 		return val, nil
 	}
 	// Priority 4: shell unscoped
-	if val, ok := os.LookupEnv(varName); ok {
+	if val, ok := envLookup(varName); ok {
 		return val, nil
 	}
 	// Priority 5: Opsfile unscoped

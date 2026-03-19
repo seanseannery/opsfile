@@ -1,0 +1,77 @@
+APP_NAME=my-service
+APP_PORT=8080
+LOG_FILE=./logs/app.log
+
+# PID_FILE is optional — set if your app writes a pidfile:
+#   PID_FILE=./tmp/app.pid
+
+# CPU, memory, and disk usage snapshot
+check-resources:
+    default:
+        @echo "=== CPU ===" && \
+            top -l 1 -n 0 | grep -E "^CPU" && \
+        @echo "=== Memory ===" && \
+            vm_stat | grep -E "Pages (free|active|wired)" && \
+        @echo "=== Disk ===" && \
+            df -h | grep -E "^/dev|Filesystem"
+
+# Tail the local application log file
+tail-logs:
+    default:
+        tail -f $(LOG_FILE)
+
+# Show all processes for this service
+ps-app:
+    default:
+        ps aux | grep -i $(APP_NAME) | grep -v grep
+
+# List processes listening on all ports, or a specific port
+list-ports:
+    default:
+        lsof -i -P -n | grep LISTEN
+    app:
+        lsof -i :$(APP_PORT) -P -n
+
+# Kill whatever is holding the app port
+kill-port:
+    default:
+        lsof -ti :$(APP_PORT) | xargs kill -9 && \
+            echo "Killed process on port $(APP_PORT)"
+
+# Check if the local app health endpoint is responding
+health-check:
+    default:
+        curl -sf http://localhost:$(APP_PORT)/health | python3 -m json.tool
+
+# List Homebrew-managed background services and their status
+brew-services:
+    default:
+        brew services list
+
+# Flush macOS DNS cache
+flush-dns:
+    default:
+        sudo dscacheutil -flushcache && \
+            sudo killall -HUP mDNSResponder && \
+            echo "DNS cache flushed"
+
+# Basic network connectivity check
+network-check:
+    default:
+        echo "=== Default Route ===" && \
+            netstat -rn | grep default && \
+        echo "=== DNS ===" && \
+            scutil --dns | grep nameserver | head -3 && \
+        echo "=== Internet ===" && \
+            ping -c 3 1.1.1.1
+
+# Show open file descriptors and socket counts for the app process
+open-files:
+    default:
+        lsof -c $(APP_NAME) | wc -l | xargs echo "open file descriptors:" && \
+            lsof -c $(APP_NAME) -i | wc -l | xargs echo "open sockets:"
+
+# Open the macOS system log in Console.app
+open-console:
+    default:
+        open -a Console

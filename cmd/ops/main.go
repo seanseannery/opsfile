@@ -22,9 +22,9 @@ func main() {
 		// Best-effort: show available commands alongside help
 		if dir, dirErr := resolveOpsfileDir(flags.Directory); dirErr == nil {
 			opsfilePath := filepath.Join(dir, opsFileName)
-			if _, cmds, cmdOrder, envOrder, perr := internal.ParseOpsFile(opsfilePath); perr == nil {
+			if parsed, perr := internal.ParseOpsFile(opsfilePath); perr == nil {
 				fmt.Fprintln(os.Stderr)
-				internal.FormatCommandList(os.Stderr, opsfilePath, cmds, cmdOrder, envOrder)
+				formatCommandList(os.Stderr, opsfilePath, parsed.Commands, parsed.CommandOrder, parsed.EnvOrder)
 			}
 		}
 		os.Exit(0)
@@ -50,7 +50,7 @@ func main() {
 		}
 	}
 
-	vars, commands, cmdOrder, envOrder, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
+	parsed, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
 	if err != nil {
 		slog.Error("parsing Opsfile: " + err.Error())
 		os.Exit(1)
@@ -70,7 +70,7 @@ func main() {
 				displayPath = rel
 			}
 		}
-		internal.FormatCommandList(os.Stdout, displayPath, commands, cmdOrder, envOrder)
+		formatCommandList(os.Stdout, displayPath, parsed.Commands, parsed.CommandOrder, parsed.EnvOrder)
 		os.Exit(0)
 	}
 
@@ -80,27 +80,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	resolved, err := internal.Resolve(args.OpsCommand, args.OpsEnv, commands, vars, envFileVars)
+	resolved, err := internal.Resolve(args.OpsCommand, args.OpsEnv, parsed.Commands, parsed.Variables, envFileVars, os.LookupEnv)
 	if err != nil {
 		slog.Error("resolving command: " + err.Error())
 		os.Exit(1)
 	}
 
-	if flags.DryRun {
-		if !flags.Silent {
-			for _, line := range resolved.Lines {
-				fmt.Println(line.Text)
-			}
-		}
-		return
-	}
-
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-
-	if err := internal.Execute(resolved.Lines, shell, flags.Silent, os.Stderr); err != nil {
+	if err := internal.Execute(resolved.Lines, internal.DefaultShell(), flags.Silent, flags.DryRun, args.CommandArgs, os.Stderr); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.ExitCode())
