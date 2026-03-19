@@ -14,13 +14,29 @@ import (
 // Environment-scoped variable resolution is deferred to execution time.
 type OpsVariables map[string]string
 
+// ShellLine is a single shell line as parsed from an Opsfile environment block,
+// with per-line metadata extracted at parse time.
+type ShellLine struct {
+	Text        string
+	Silent      bool // from @ prefix
+	IgnoreError bool // from - prefix
+}
+
 // OpsCommand represents a single named command with per-environment shell lines.
 type OpsCommand struct {
 	Name        string
 	Description string // from # comment directly above declaration
 	// Environments maps environment name to the ordered list of shell lines to execute.
 	// "default" is a valid key used as a fallback at execution time.
-	Environments map[string][]string
+	Environments map[string][]ShellLine
+}
+
+// ParsedOpsfile holds the complete result of parsing an Opsfile.
+type ParsedOpsfile struct {
+	Variables    OpsVariables
+	Commands     map[string]OpsCommand
+	CommandOrder []string
+	EnvOrder     []string
 }
 
 type parseState int
@@ -48,12 +64,12 @@ type parser struct {
 }
 
 // ParseOpsFile reads and parses an Opsfile at the given path.
-// It returns the declared variables, commands, command declaration order,
-// environment declaration order, and any error.
-func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, []string, []string, error) {
+// It returns a ParsedOpsfile containing the declared variables, commands,
+// command declaration order, and environment declaration order.
+func ParseOpsFile(path string) (ParsedOpsfile, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("opening Opsfile: %w", err)
+		return ParsedOpsfile{}, fmt.Errorf("opening Opsfile: %w", err)
 	}
 	defer f.Close()
 
@@ -65,25 +81,30 @@ func ParseOpsFile(path string) (OpsVariables, map[string]OpsCommand, []string, [
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		if err := p.processLine(scanner.Text()); err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("line %d: %w", p.lineNum, err)
+			return ParsedOpsfile{}, fmt.Errorf("line %d: %w", p.lineNum, err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("reading Opsfile: %w", err)
+		return ParsedOpsfile{}, fmt.Errorf("reading Opsfile: %w", err)
 	}
 
 	// Flush any trailing backslash-continuation fragment at end of file.
 	p.flushContinuation()
 
 	if err := p.validate(); err != nil {
-		return nil, nil, nil, nil, err
+		return ParsedOpsfile{}, err
 	}
 
 	commands := make(map[string]OpsCommand, len(p.commands))
 	for k, v := range p.commands {
 		commands[k] = *v
 	}
-	return p.variables, commands, p.order, p.envOrder, nil
+	return ParsedOpsfile{
+		Variables:    p.variables,
+		Commands:     commands,
+		CommandOrder: p.order,
+		EnvOrder:     p.envOrder,
+	}, nil
 }
 
 // processLine categorises a raw line and dispatches to the appropriate handler.
@@ -233,7 +254,7 @@ func (p *parser) startCommand(name string) error {
 	p.commands[name] = &OpsCommand{
 		Name:         name,
 		Description:  p.lastComment,
-		Environments: make(map[string][]string),
+		Environments: make(map[string][]ShellLine),
 	}
 	p.lastComment = ""
 	p.order = append(p.order, name)
@@ -245,7 +266,7 @@ func (p *parser) startEnv(name string) {
 	p.currentEnv = name
 	cmd := p.commands[p.currentCommand]
 	if _, exists := cmd.Environments[name]; !exists {
-		cmd.Environments[name] = []string{}
+		cmd.Environments[name] = []ShellLine{}
 	}
 	if !slices.Contains(p.envOrder, name) {
 		p.envOrder = append(p.envOrder, name)
@@ -254,9 +275,35 @@ func (p *parser) startEnv(name string) {
 	p.state = inEnvironment
 }
 
-func (p *parser) appendShellLine(line string) {
+// appendShellLine strips any leading @ (silent) and - (ignore-error) prefixes
+// from the assembled shell line text and appends a ShellLine to the current
+// environment. Prefixes are only recognised at the very start of the line;
+// each prefix type is consumed at most once.
+func (p *parser) appendShellLine(raw string) {
+	silent := false
+	ignoreError := false
+	line := raw
+	for len(line) > 0 {
+		switch line[0] {
+		case '@':
+			if !silent {
+				silent = true
+				line = line[1:]
+				continue
+			}
+		case '-':
+			if !ignoreError {
+				ignoreError = true
+				line = line[1:]
+				continue
+			}
+		}
+		break
+	}
 	cmd := p.commands[p.currentCommand]
-	cmd.Environments[p.currentEnv] = append(cmd.Environments[p.currentEnv], line)
+	cmd.Environments[p.currentEnv] = append(cmd.Environments[p.currentEnv], ShellLine{
+		Text: line, Silent: silent, IgnoreError: ignoreError,
+	})
 }
 
 // flushContinuation appends any buffered backslash-continuation fragments as a
@@ -268,11 +315,12 @@ func (p *parser) flushContinuation() {
 	}
 }
 
-// joinLastShellLine appends suffix to the last shell line in the current environment.
+// joinLastShellLine appends suffix to the Text of the last shell line in the
+// current environment.
 func (p *parser) joinLastShellLine(suffix string) {
 	lines := p.commands[p.currentCommand].Environments[p.currentEnv]
 	if len(lines) > 0 {
-		lines[len(lines)-1] += suffix
+		lines[len(lines)-1].Text += suffix
 	}
 }
 

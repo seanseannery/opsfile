@@ -1,14 +1,16 @@
-package internal
+package main
 
 import (
 	"fmt"
 	"io"
 	"strings"
+
+	"sean_seannery/opsfile/internal"
 )
 
-// FormatCommandList writes a formatted summary of the Opsfile's commands and
+// formatCommandList writes a formatted summary of the Opsfile's commands and
 // environments to w. Commands are printed in cmdOrder; environments in envOrder.
-func FormatCommandList(w io.Writer, opsfilePath string, cmds map[string]OpsCommand, cmdOrder []string, envOrder []string) {
+func formatCommandList(w io.Writer, opsfilePath string, cmds map[string]internal.OpsCommand, cmdOrder []string, envOrder []string) {
 	fmt.Fprintf(w, "Commands Found in [%s]:\n", opsfilePath)
 	fmt.Fprintln(w)
 
