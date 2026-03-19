@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -322,6 +323,34 @@ func (p *parser) joinLastShellLine(suffix string) {
 	if len(lines) > 0 {
 		lines[len(lines)-1].Text += suffix
 	}
+}
+
+// OpsFileName is the conventional name of the Opsfile that ops searches for.
+const OpsFileName = "Opsfile"
+
+// FindOpsfileDir returns the directory containing the nearest Opsfile, walking
+// up the directory tree from the current working directory (same discovery
+// pattern as git). Directories named "Opsfile" are ignored.
+func FindOpsfileDir() (string, error) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
+	}
+
+	currPath := workingDir
+	file, err := os.Stat(filepath.Join(currPath, OpsFileName))
+
+	for (err != nil && os.IsNotExist(err)) || (err == nil && file.IsDir()) {
+		if currPath == filepath.Dir(currPath) {
+			return "", errors.New("could not find Opsfile in any parent directory")
+		}
+		currPath = filepath.Dir(currPath)
+		file, err = os.Stat(filepath.Join(currPath, OpsFileName))
+	}
+	if err != nil {
+		return "", fmt.Errorf("stat %s: %w", currPath, err)
+	}
+	return currPath, nil
 }
 
 // validate checks post-parse invariants.
