@@ -747,3 +747,72 @@ my-cmd:
 	assert.Equal(t, "-echo hello", lines[0].Text)
 	assert.True(t, lines[0].IgnoreError)
 }
+
+// --- FindOpsfileDir tests ---
+
+// realPath resolves symlinks so tests work on macOS where /var -> /private/var.
+func realPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	require.NoError(t, err, "EvalSymlinks(%q)", path)
+	return resolved
+}
+
+func TestFindOpsfileDir_FoundInCwd(t *testing.T) {
+	tmp := realPath(t, t.TempDir())
+	err := os.WriteFile(filepath.Join(tmp, OpsFileName), []byte(""), 0o644)
+	require.NoError(t, err)
+
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(orig) })
+	os.Chdir(tmp)
+
+	got, err := FindOpsfileDir()
+	require.NoError(t, err)
+	assert.Equal(t, tmp, got)
+}
+
+func TestFindOpsfileDir_FoundInParent(t *testing.T) {
+	parent := realPath(t, t.TempDir())
+	child := filepath.Join(parent, "subdir")
+	require.NoError(t, os.Mkdir(child, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(parent, OpsFileName), []byte(""), 0o644))
+
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(orig) })
+	os.Chdir(child)
+
+	got, err := FindOpsfileDir()
+	require.NoError(t, err)
+	assert.Equal(t, parent, got)
+}
+
+func TestFindOpsfileDir_NotFound(t *testing.T) {
+	tmp := realPath(t, t.TempDir())
+
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(orig) })
+	os.Chdir(tmp)
+
+	_, err := FindOpsfileDir()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "could not find Opsfile")
+}
+
+func TestFindOpsfileDir_DirectoryNamedOpsfileSkipped(t *testing.T) {
+	parent := realPath(t, t.TempDir())
+	child := filepath.Join(parent, "subdir")
+	require.NoError(t, os.Mkdir(child, 0o755))
+	// Create a directory named "Opsfile" in child — should be skipped.
+	require.NoError(t, os.Mkdir(filepath.Join(child, OpsFileName), 0o755))
+	// Place the real Opsfile in parent.
+	require.NoError(t, os.WriteFile(filepath.Join(parent, OpsFileName), []byte(""), 0o644))
+
+	orig, _ := os.Getwd()
+	t.Cleanup(func() { os.Chdir(orig) })
+	os.Chdir(child)
+
+	got, err := FindOpsfileDir()
+	require.NoError(t, err)
+	assert.Equal(t, parent, got, "directory named Opsfile should be skipped")
+}

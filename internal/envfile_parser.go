@@ -4,8 +4,25 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
+
+const DefaultEnvFileName = ".ops_secrets.env"
+
+// LoadEnvFile resolves and parses the env file. If envFilePath is set, that
+// file is used (error if missing). Otherwise, DefaultEnvFileName next to the
+// Opsfile is loaded if present (silently skipped if absent).
+func LoadEnvFile(envFilePath, opsfileDir string) (OpsVariables, error) {
+	if envFilePath != "" {
+		return ParseEnvFile(envFilePath)
+	}
+	defaultPath := filepath.Join(opsfileDir, DefaultEnvFileName)
+	if _, err := os.Stat(defaultPath); err != nil {
+		return nil, nil // absent default is silent no-op
+	}
+	return ParseEnvFile(defaultPath)
+}
 
 // ParseEnvFile reads and parses a .env-format file at the given path.
 // It returns the declared variables as an OpsVariables map.

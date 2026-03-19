@@ -12,8 +12,6 @@ import (
 	"sean_seannery/opsfile/internal"
 )
 
-const opsFileName string = "Opsfile"
-
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
@@ -21,7 +19,7 @@ func main() {
 	if errors.Is(err, internal.ErrHelp) {
 		// Best-effort: show available commands alongside help
 		if dir, dirErr := resolveOpsfileDir(flags.Directory); dirErr == nil {
-			opsfilePath := filepath.Join(dir, opsFileName)
+			opsfilePath := filepath.Join(dir, internal.OpsFileName)
 			if parsed, perr := internal.ParseOpsFile(opsfilePath); perr == nil {
 				fmt.Fprintln(os.Stderr)
 				formatCommandList(os.Stderr, opsfilePath, parsed.Commands, parsed.CommandOrder, parsed.EnvOrder)
@@ -43,27 +41,27 @@ func main() {
 	if flags.Directory != "" {
 		dir = flags.Directory
 	} else {
-		dir, err = getClosestOpsfilePath()
+		dir, err = internal.FindOpsfileDir()
 		if err != nil {
 			slog.Error("finding Opsfile: " + err.Error())
 			os.Exit(1)
 		}
 	}
 
-	parsed, err := internal.ParseOpsFile(filepath.Join(dir, opsFileName))
+	parsed, err := internal.ParseOpsFile(filepath.Join(dir, internal.OpsFileName))
 	if err != nil {
 		slog.Error("parsing Opsfile: " + err.Error())
 		os.Exit(1)
 	}
 
-	envFileVars, err := loadEnvFile(flags.EnvFile, dir)
+	envFileVars, err := internal.LoadEnvFile(flags.EnvFile, dir)
 	if err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
 	}
 
 	if flags.List {
-		absPath := filepath.Join(dir, opsFileName)
+		absPath := filepath.Join(dir, internal.OpsFileName)
 		displayPath := absPath
 		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 			if rel, relErr := filepath.Rel(cwd, absPath); relErr == nil {
@@ -97,54 +95,10 @@ func main() {
 }
 
 // resolveOpsfileDir returns the directory containing the Opsfile, preferring
-// flagDir when set and falling back to getClosestOpsfilePath.
+// flagDir when set and falling back to internal.FindOpsfileDir.
 func resolveOpsfileDir(flagDir string) (string, error) {
 	if flagDir != "" {
 		return flagDir, nil
 	}
-	return getClosestOpsfilePath()
-}
-
-const defaultEnvFileName = ".ops_secrets.env"
-
-// loadEnvFile resolves and parses the env file. If envFilePath is set, that
-// file is used (error if missing). Otherwise, .ops_secrets.env next to the
-// Opsfile is loaded if present (silently skipped if absent).
-func loadEnvFile(envFilePath, opsfileDir string) (internal.OpsVariables, error) {
-	if envFilePath != "" {
-		return internal.ParseEnvFile(envFilePath)
-	}
-	defaultPath := filepath.Join(opsfileDir, defaultEnvFileName)
-	if _, err := os.Stat(defaultPath); err != nil {
-		return nil, nil // absent default is silent no-op
-	}
-	return internal.ParseEnvFile(defaultPath)
-}
-
-// getClosestOpsfilePath returns the directory containing the nearest Opsfile,
-// walking up the directory tree from the current working directory.
-func getClosestOpsfilePath() (string, error) {
-	workingDir, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("getting working directory: %w", err)
-	}
-	slog.Info("Working Directory: " + workingDir)
-
-	currPath := workingDir
-	file, err := os.Stat(filepath.Join(currPath, opsFileName))
-
-	// ignore folders named 'Opsfile'
-	for (err != nil && os.IsNotExist(err)) || (err == nil && file.IsDir()) {
-		slog.Info("Opsfile not found in " + currPath)
-
-		if currPath == filepath.Dir(currPath) {
-			return "", errors.New("could not find Opsfile in any parent directory")
-		}
-		currPath = filepath.Dir(currPath)
-		file, err = os.Stat(filepath.Join(currPath, opsFileName))
-	}
-	if err != nil {
-		return "", fmt.Errorf("stat %s: %w", currPath, err)
-	}
-	return currPath, nil
+	return internal.FindOpsfileDir()
 }

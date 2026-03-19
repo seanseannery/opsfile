@@ -163,3 +163,47 @@ func TestParseEnvFile_ErrorFormat(t *testing.T) {
 	assert.True(t, len(err.Error()) > 0)
 	assert.Contains(t, err.Error(), `env-file "`+missingPath+`"`)
 }
+
+// --- LoadEnvFile tests ---
+
+func TestLoadEnvFile_ExplicitPathLoadsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "custom.env")
+	err := os.WriteFile(path, []byte("KEY=value\n"), 0o644)
+	require.NoError(t, err)
+
+	vars, err := LoadEnvFile(path, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "value", vars["KEY"])
+}
+
+func TestLoadEnvFile_ExplicitPathMissingReturnsError(t *testing.T) {
+	_, err := LoadEnvFile("/nonexistent/custom.env", t.TempDir())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "env-file")
+}
+
+func TestLoadEnvFile_DefaultFileLoadedWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultEnvFileName)
+	err := os.WriteFile(path, []byte("SECRET=abc\n"), 0o644)
+	require.NoError(t, err)
+
+	vars, err := LoadEnvFile("", dir)
+	require.NoError(t, err)
+	assert.Equal(t, "abc", vars["SECRET"])
+}
+
+func TestLoadEnvFile_DefaultFileAbsentIsNoOp(t *testing.T) {
+	// No .ops_secrets.env in dir — should return nil, nil silently.
+	vars, err := LoadEnvFile("", t.TempDir())
+	require.NoError(t, err)
+	assert.Nil(t, vars)
+}
+
+func TestLoadEnvFile_EmptyPathsUsesDefault(t *testing.T) {
+	// Both envFilePath and opsfileDir empty — default path won't exist, so no-op.
+	vars, err := LoadEnvFile("", t.TempDir())
+	require.NoError(t, err)
+	assert.Nil(t, vars)
+}
